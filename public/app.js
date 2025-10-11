@@ -394,6 +394,36 @@ function renderConversationHistory(messages = []) {
   elements.chatHistory.scrollTop = elements.chatHistory.scrollHeight;
 }
 
+async function deleteConversation(sessionId) {
+  if (!sessionId) return;
+
+  const confirmed = confirm('Delete this conversation? This cannot be undone.');
+  if (!confirmed) return;
+
+  try {
+    if (typeof invoke === 'function') {
+      await invoke('delete_chat_session', {
+        sessionId,
+        chatsDir: state.paths?.chats || null
+      });
+    }
+
+    // Remove from cache
+    state.conversationCache.delete(sessionId);
+
+    // If deleting active conversation, start a new one
+    if (sessionId === state.sessionId) {
+      startNewConversation({ focusInput: true, persistSummary: true });
+    }
+
+    // Refresh the conversation list
+    await refreshConversationList({ preserveSelection: false });
+  } catch (error) {
+    console.error('Failed to delete conversation:', error);
+    alert(`Failed to delete conversation: ${error?.message ?? error}`);
+  }
+}
+
 function renderConversationList() {
   if (!elements.conversationList) return;
   elements.conversationList.innerHTML = '';
@@ -405,22 +435,40 @@ function renderConversationList() {
 
   elements.conversationEmpty?.classList.remove('visible');
   state.conversations.forEach((conv) => {
-    const item = document.createElement('button');
-    item.type = 'button';
+    const item = document.createElement('div');
     item.className = 'conversation-item';
     if (conv.sessionId === state.sessionId) {
       item.classList.add('active');
     }
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'conversation-button';
+
     const title = document.createElement('h3');
     title.textContent = conv.title || 'New chat';
     const preview = document.createElement('p');
     preview.textContent =
       conv.preview || `${conv.messageCount} message${conv.messageCount === 1 ? '' : 's'}`;
-    item.appendChild(title);
-    item.appendChild(preview);
-    item.addEventListener('click', () => {
+
+    button.appendChild(title);
+    button.appendChild(preview);
+    button.addEventListener('click', () => {
       void selectConversation(conv.sessionId);
     });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'delete-conversation-btn';
+    deleteBtn.textContent = '×';
+    deleteBtn.title = 'Delete conversation';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void deleteConversation(conv.sessionId);
+    });
+
+    item.appendChild(button);
+    item.appendChild(deleteBtn);
     elements.conversationList.appendChild(item);
   });
 }

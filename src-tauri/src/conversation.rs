@@ -263,3 +263,23 @@ pub fn resolve_chats_dir(custom: Option<&str>) -> Result<PathBuf, String> {
     let base = crate::storage::get_base_dir_blocking()?;
     Ok(base.join("Chats"))
 }
+
+pub async fn delete_conversation(
+    chats_dir: &Path,
+    session_id: &str,
+) -> Result<(), String> {
+    let file_path = session_file(chats_dir, session_id);
+
+    match fs::remove_file(&file_path).await {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            // File doesn't exist, consider it success
+            Ok(())
+        }
+        Err(e) => Err(format!(
+            "Failed to delete conversation {}: {}",
+            file_path.display(),
+            e
+        )),
+    }
+}

@@ -368,19 +368,14 @@ body.chat-mode header {
 }
 
 .conversation-item {
+  position: relative;
   border: 1px solid rgba(94, 155, 255, 0.1);
   border-radius: 0.75rem;
-  padding: 0.75rem 0.85rem;
   background: rgba(11, 15, 23, 0.92);
-  cursor: pointer;
-  display: grid;
-  gap: 0.35rem;
   transition: border 0.15s ease, background 0.15s ease;
-  width: 100%;
-  text-align: left;
-  color: inherit;
-  font: inherit;
-  appearance: none;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .conversation-item:hover {
@@ -388,27 +383,64 @@ body.chat-mode header {
   background: rgba(27, 35, 51, 0.9);
 }
 
-.conversation-item:focus-visible {
-  outline: 2px solid rgba(94, 155, 255, 0.7);
-  outline-offset: 2px;
-}
-
 .conversation-item.active {
   border-color: rgba(94, 155, 255, 0.65);
   background: rgba(52, 120, 247, 0.15);
 }
 
-.conversation-item h3 {
+.conversation-button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 0.75rem 0.85rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.35rem;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  appearance: none;
+}
+
+.conversation-button:focus-visible {
+  outline: 2px solid rgba(94, 155, 255, 0.7);
+  outline-offset: -2px;
+}
+
+.conversation-button h3 {
   margin: 0;
   font-size: 0.95rem;
   color: var(--text);
 }
 
-.conversation-item p {
+.conversation-button p {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.8rem;
   line-height: 1.4;
+}
+
+.delete-conversation-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  width: 36px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease;
+  border-left: 1px solid rgba(94, 155, 255, 0.1);
+}
+
+.delete-conversation-btn:hover {
+  background: rgba(255, 80, 80, 0.15);
+  color: #ff8080;
+}
+
+.delete-conversation-btn:active {
+  background: rgba(255, 80, 80, 0.25);
 }
 
 .conversation-empty {

@@ -390,6 +390,15 @@ async fn list_chat_sessions(chats_dir: Option<String>) -> Result<Vec<Conversatio
     conversation::list_conversations(&dir).await
 }
 
+#[tauri::command]
+async fn delete_chat_session(
+    session_id: String,
+    chats_dir: Option<String>,
+) -> Result<(), String> {
+    let dir = conversation::resolve_chats_dir(chats_dir.as_deref())?;
+    conversation::delete_conversation(&dir, &session_id).await
+}
+
 fn main() {
     let builder = tauri::Builder::default();
 
@@ -421,6 +430,7 @@ fn main() {
         append_chat_records,
         load_chat_history,
         list_chat_sessions,
+        delete_chat_session,
     ]);
 
     #[cfg(all(feature = "runtime-ollama", not(feature = "runtime-python")))]
@@ -442,6 +452,7 @@ fn main() {
         append_chat_records,
         load_chat_history,
         list_chat_sessions,
+        delete_chat_session,
     ]);
 
     #[cfg(all(not(feature = "runtime-ollama"), feature = "runtime-python"))]
@@ -462,6 +473,7 @@ fn main() {
         append_chat_records,
         load_chat_history,
         list_chat_sessions,
+        delete_chat_session,
     ]);
 
     #[cfg(all(not(feature = "runtime-ollama"), not(feature = "runtime-python")))]
