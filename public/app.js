@@ -1134,10 +1134,59 @@ async function runSetup() {
   }
 }
 
+function renderMarkdown(content) {
+  if (typeof marked === 'undefined') {
+    return content;
+  }
+
+  // Configure marked options
+  marked.setOptions({
+    breaks: true,
+    gfm: true,
+    highlight: function(code, lang) {
+      if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
+        try {
+          return hljs.highlight(code, { language: lang }).value;
+        } catch (err) {
+          console.error('Highlight error:', err);
+        }
+      }
+      return code;
+    }
+  });
+
+  const html = marked.parse(content);
+  return html;
+}
+
 function appendMessageBubble(role, content = '') {
   const bubble = document.createElement('div');
   bubble.className = `bubble ${role}`;
-  bubble.textContent = content;
+
+  if (role === 'assistant' && content) {
+    // Render markdown for assistant messages
+    const markdownContainer = document.createElement('div');
+    markdownContainer.className = 'markdown-content';
+    markdownContainer.innerHTML = renderMarkdown(content);
+    bubble.appendChild(markdownContainer);
+
+    // Highlight all code blocks
+    if (typeof hljs !== 'undefined') {
+      bubble.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+
+        // Add language label to pre element
+        const lang = block.className.match(/language-(\w+)/);
+        if (lang && lang[1]) {
+          block.parentElement.setAttribute('data-language', lang[1]);
+        }
+      });
+    }
+  } else {
+    // Plain text for user messages
+    bubble.textContent = content;
+  }
+
   elements.chatHistory.appendChild(bubble);
   elements.chatHistory.scrollTop = elements.chatHistory.scrollHeight;
   return bubble;
@@ -1216,8 +1265,24 @@ async function handleChatSubmit(event) {
       }
     } finally {
       clearTypingIndicator();
-      if (state.streamingBubble && !state.shouldStopStreaming) {
-        state.streamingBubble.textContent = state.streamingBuffer || state.streamingBubble.textContent;
+      if (state.streamingBubble && !state.shouldStopStreaming && state.streamingBuffer) {
+        // Render markdown for the completed stream
+        const markdownContainer = document.createElement('div');
+        markdownContainer.className = 'markdown-content';
+        markdownContainer.innerHTML = renderMarkdown(state.streamingBuffer);
+        state.streamingBubble.textContent = '';
+        state.streamingBubble.appendChild(markdownContainer);
+
+        // Highlight code blocks
+        if (typeof hljs !== 'undefined') {
+          state.streamingBubble.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+            const lang = block.className.match(/language-(\w+)/);
+            if (lang && lang[1]) {
+              block.parentElement.setAttribute('data-language', lang[1]);
+            }
+          });
+        }
       }
       state.streamingBubble = null;
       state.streamingBuffer = '';
@@ -1246,7 +1311,25 @@ async function handleChatSubmit(event) {
     });
     if (state.streamingBubble) {
       clearTypingIndicator();
-      state.streamingBubble.textContent = response || state.streamingBuffer;
+      const finalContent = response || state.streamingBuffer;
+
+      // Render markdown for the completed response
+      const markdownContainer = document.createElement('div');
+      markdownContainer.className = 'markdown-content';
+      markdownContainer.innerHTML = renderMarkdown(finalContent);
+      state.streamingBubble.textContent = '';
+      state.streamingBubble.appendChild(markdownContainer);
+
+      // Highlight code blocks
+      if (typeof hljs !== 'undefined') {
+        state.streamingBubble.querySelectorAll('pre code').forEach((block) => {
+          hljs.highlightElement(block);
+          const lang = block.className.match(/language-(\w+)/);
+          if (lang && lang[1]) {
+            block.parentElement.setAttribute('data-language', lang[1]);
+          }
+        });
+      }
     }
     const assistantContent = response || state.streamingBuffer;
     if (assistantContent) {
@@ -1412,7 +1495,11 @@ function attachEventListeners() {
           if (state.typingIndicator && state.streamingBuffer.length) {
             clearTypingIndicator();
           }
+
+          // For streaming, use plain text for real-time updates
+          // Markdown will be rendered when streaming completes
           state.streamingBubble.textContent = state.streamingBuffer;
+
           // Auto-scroll to bottom as messages come in
           elements.chatHistory.scrollTop = elements.chatHistory.scrollHeight;
         }

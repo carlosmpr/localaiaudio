@@ -69,15 +69,35 @@ class LlamaEngine:
             # When messages are provided, use them as-is (history from disk)
             # Filter to only include user and assistant roles (no system for Gemma compatibility)
             prepared = []
+            last_role = None
+
             for msg in messages:
                 if isinstance(msg, dict) and "role" in msg and "content" in msg:
                     role = msg.get("role")
+                    content = msg.get("content", "").strip()
+
                     # Only include user and assistant roles (skip system)
-                    if role in ["user", "assistant"]:
-                        prepared.append({
-                            "role": role,
-                            "content": msg.get("content"),
-                        })
+                    if role in ["user", "assistant"] and content:
+                        # If same role appears consecutively, merge the content
+                        if last_role == role and prepared:
+                            # Merge with the previous message
+                            prepared[-1]["content"] += "\n\n" + content
+                        else:
+                            # Add as new message
+                            prepared.append({
+                                "role": role,
+                                "content": content,
+                            })
+                            last_role = role
+
+            # Ensure we have alternating roles and end with user
+            # If last message is assistant, we're good (the new prompt will be user)
+            # If last message is user, we might have an issue - but the new message
+            # from the frontend will be appended, so we're fine
+
+            # Filter out any empty messages
+            prepared = [msg for msg in prepared if msg.get("content", "").strip()]
+
             return prepared
 
         # For simple prompts without history (legacy support)
