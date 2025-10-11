@@ -1136,27 +1136,73 @@ async function runSetup() {
 
 function renderMarkdown(content) {
   if (typeof marked === 'undefined') {
-    return content;
+    console.warn('Marked library not loaded');
+    return escapeHtml(content);
   }
 
-  // Configure marked options
-  marked.setOptions({
-    breaks: true,
-    gfm: true,
-    highlight: function(code, lang) {
-      if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
-        try {
-          return hljs.highlight(code, { language: lang }).value;
-        } catch (err) {
-          console.error('Highlight error:', err);
-        }
-      }
-      return code;
-    }
-  });
+  try {
+    // Configure marked options
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+      headerIds: false,
+      mangle: false
+    });
 
-  const html = marked.parse(content);
-  return html;
+    // Parse markdown to HTML
+    const html = marked.parse(content);
+    return html;
+  } catch (err) {
+    console.error('Markdown parse error:', err);
+    return escapeHtml(content);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Update streaming markdown in real-time (no double render)
+function updateStreamingMarkdown(bubble, content) {
+  if (!bubble || !content) return;
+
+  // Create or get the markdown container
+  let markdownContainer = bubble.querySelector('.markdown-content');
+  if (!markdownContainer) {
+    markdownContainer = document.createElement('div');
+    markdownContainer.className = 'markdown-content';
+    bubble.textContent = '';
+    bubble.appendChild(markdownContainer);
+  }
+
+  // Render markdown directly
+  if (typeof marked !== 'undefined') {
+    try {
+      const html = marked.parse(content);
+      markdownContainer.innerHTML = html;
+
+      // Apply syntax highlighting to any code blocks
+      if (typeof hljs !== 'undefined') {
+        markdownContainer.querySelectorAll('pre code').forEach((block) => {
+          if (!block.classList.contains('hljs')) {
+            hljs.highlightElement(block);
+          }
+          const lang = block.className.match(/language-(\w+)/);
+          if (lang && lang[1]) {
+            block.parentElement.setAttribute('data-language', lang[1]);
+          }
+        });
+      }
+    } catch (err) {
+      // Fallback to plain text if markdown parsing fails
+      markdownContainer.textContent = content;
+    }
+  } else {
+    // Fallback if marked is not loaded
+    markdownContainer.textContent = content;
+  }
 }
 
 function appendMessageBubble(role, content = '') {
@@ -1170,18 +1216,23 @@ function appendMessageBubble(role, content = '') {
     markdownContainer.innerHTML = renderMarkdown(content);
     bubble.appendChild(markdownContainer);
 
-    // Highlight all code blocks
-    if (typeof hljs !== 'undefined') {
-      bubble.querySelectorAll('pre code').forEach((block) => {
-        hljs.highlightElement(block);
+    // Highlight all code blocks after rendering
+    requestAnimationFrame(() => {
+      if (typeof hljs !== 'undefined') {
+        bubble.querySelectorAll('pre code').forEach((block) => {
+          // Only highlight if not already highlighted
+          if (!block.classList.contains('hljs')) {
+            hljs.highlightElement(block);
+          }
 
-        // Add language label to pre element
-        const lang = block.className.match(/language-(\w+)/);
-        if (lang && lang[1]) {
-          block.parentElement.setAttribute('data-language', lang[1]);
-        }
-      });
-    }
+          // Add language label to pre element
+          const lang = block.className.match(/language-(\w+)/);
+          if (lang && lang[1]) {
+            block.parentElement.setAttribute('data-language', lang[1]);
+          }
+        });
+      }
+    });
   } else {
     // Plain text for user messages
     bubble.textContent = content;
@@ -1265,25 +1316,8 @@ async function handleChatSubmit(event) {
       }
     } finally {
       clearTypingIndicator();
-      if (state.streamingBubble && !state.shouldStopStreaming && state.streamingBuffer) {
-        // Render markdown for the completed stream
-        const markdownContainer = document.createElement('div');
-        markdownContainer.className = 'markdown-content';
-        markdownContainer.innerHTML = renderMarkdown(state.streamingBuffer);
-        state.streamingBubble.textContent = '';
-        state.streamingBubble.appendChild(markdownContainer);
-
-        // Highlight code blocks
-        if (typeof hljs !== 'undefined') {
-          state.streamingBubble.querySelectorAll('pre code').forEach((block) => {
-            hljs.highlightElement(block);
-            const lang = block.className.match(/language-(\w+)/);
-            if (lang && lang[1]) {
-              block.parentElement.setAttribute('data-language', lang[1]);
-            }
-          });
-        }
-      }
+      // Markdown is already rendered in real-time during streaming
+      // No need for double render here
       state.streamingBubble = null;
       state.streamingBuffer = '';
       state.typingIndicator = null;
@@ -1313,22 +1347,10 @@ async function handleChatSubmit(event) {
       clearTypingIndicator();
       const finalContent = response || state.streamingBuffer;
 
-      // Render markdown for the completed response
-      const markdownContainer = document.createElement('div');
-      markdownContainer.className = 'markdown-content';
-      markdownContainer.innerHTML = renderMarkdown(finalContent);
-      state.streamingBubble.textContent = '';
-      state.streamingBubble.appendChild(markdownContainer);
-
-      // Highlight code blocks
-      if (typeof hljs !== 'undefined') {
-        state.streamingBubble.querySelectorAll('pre code').forEach((block) => {
-          hljs.highlightElement(block);
-          const lang = block.className.match(/language-(\w+)/);
-          if (lang && lang[1]) {
-            block.parentElement.setAttribute('data-language', lang[1]);
-          }
-        });
+      // Render markdown in real-time (already being done during streaming)
+      // Just ensure final content is rendered if stream didn't update
+      if (finalContent && finalContent !== state.streamingBuffer) {
+        updateStreamingMarkdown(state.streamingBubble, finalContent);
       }
     }
     const assistantContent = response || state.streamingBuffer;
@@ -1496,9 +1518,8 @@ function attachEventListeners() {
             clearTypingIndicator();
           }
 
-          // For streaming, use plain text for real-time updates
-          // Markdown will be rendered when streaming completes
-          state.streamingBubble.textContent = state.streamingBuffer;
+          // Render markdown in real-time during streaming for smooth experience
+          updateStreamingMarkdown(state.streamingBubble, state.streamingBuffer);
 
           // Auto-scroll to bottom as messages come in
           elements.chatHistory.scrollTop = elements.chatHistory.scrollHeight;
