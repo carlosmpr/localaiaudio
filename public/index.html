@@ -83,6 +83,9 @@
                 <p class="chat-subtitle">Speak with your local assistant.</p>
               </div>
               <div class="chat-meta">
+                <button type="button" id="settingsBtn" class="secondary small icon-button" title="Context & Model Settings">
+                  Settings
+                </button>
                 <button type="button" id="changeChatDirBtn" class="secondary small icon-button" title="Choose chat storage folder">
                   Chat folder
                 </button>
@@ -101,6 +104,64 @@
         </div>
       </section>
     </main>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Context & Model Settings</h2>
+          <button type="button" id="closeSettingsBtn" class="close-btn">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="settings-section">
+            <h3>Context Window Management</h3>
+            <div class="setting-item">
+              <label for="contextStrategy">Strategy</label>
+              <select id="contextStrategy">
+                <option value="all">Full History (send all messages)</option>
+                <option value="sliding">Sliding Window (last N messages)</option>
+                <option value="smart">Smart Limit (last N, keep important)</option>
+              </select>
+              <p class="setting-hint">How to manage conversation context sent to the model</p>
+            </div>
+
+            <div class="setting-item" id="maxMessagesContainer">
+              <label for="maxMessages">Maximum Messages</label>
+              <input type="number" id="maxMessages" min="2" max="100" value="20" />
+              <p class="setting-hint">Number of recent messages to include (pairs of user/assistant)</p>
+            </div>
+
+            <div class="setting-item">
+              <label for="maxTokens">Context Size (tokens)</label>
+              <input type="number" id="maxTokens" min="512" max="32768" step="512" value="4096" />
+              <p class="setting-hint">Approximate token limit for context (4096 ≈ 3000 words)</p>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Model Parameters</h3>
+            <div class="setting-item">
+              <label for="temperature">Temperature: <span id="temperatureValue">0.7</span></label>
+              <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7" />
+              <p class="setting-hint">Higher = more creative, Lower = more focused</p>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Context Info</h3>
+            <div class="context-stats">
+              <p><strong>Current conversation:</strong> <span id="currentMessageCount">0</span> messages</p>
+              <p><strong>Estimated tokens:</strong> <span id="estimatedTokens">0</span> tokens</p>
+              <p><strong>Will send to model:</strong> <span id="willSendCount">0</span> messages</p>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="saveSettingsBtn" class="primary">Save Settings</button>
+          <button type="button" id="cancelSettingsBtn" class="secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
 
     <script src="/app.js" type="module"></script>
   </body>

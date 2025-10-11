@@ -470,6 +470,7 @@ body.chat-mode header {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5rem;
+  flex-shrink: 0;
 }
 
 .chat-header-text h2 {
@@ -502,7 +503,6 @@ body.chat-mode header {
 }
 
 #chatHistory {
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
@@ -511,6 +511,8 @@ body.chat-mode header {
   background: rgba(13, 18, 30, 0.92);
   border: 1px solid rgba(31, 42, 61, 0.7);
   overflow-y: auto;
+  height: calc(100vh - 380px);
+  flex-shrink: 0;
 }
 
 .bubble {
@@ -582,11 +584,13 @@ body.chat-mode header {
   gap: 0.85rem;
   border-top: 1px solid rgba(94, 155, 255, 0.1);
   padding-top: 1rem;
+  flex-shrink: 0;
 }
 
 #chatInput {
   width: 100%;
-  min-height: 120px;
+  min-height: 80px;
+  max-height: 200px;
   resize: vertical;
   padding: 0.85rem 1rem;
   border-radius: 0.85rem;
@@ -612,6 +616,193 @@ body.chat-mode header {
   padding: 0.6rem 1.8rem;
 }
 
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(9, 11, 19, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 2rem;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  background: rgba(17, 23, 39, 0.95);
+  border: 1px solid rgba(94, 155, 255, 0.25);
+  border-radius: 1rem;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid rgba(94, 155, 255, 0.15);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.close-btn:hover {
+  background: rgba(255, 80, 80, 0.15);
+  color: #ff8080;
+}
+
+.modal-body {
+  padding: 2rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.settings-section {
+  margin-bottom: 2rem;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.settings-section h3 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+.setting-item {
+  margin-bottom: 1.5rem;
+}
+
+.setting-item:last-child {
+  margin-bottom: 0;
+}
+
+.setting-item label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.setting-item select,
+.setting-item input[type="number"] {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(94, 155, 255, 0.25);
+  background: rgba(15, 21, 33, 0.95);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.setting-item input[type="range"] {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(94, 155, 255, 0.2);
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.setting-item input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(94, 155, 255, 0.4);
+}
+
+.setting-item input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 8px rgba(94, 155, 255, 0.4);
+}
+
+.setting-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.context-stats {
+  background: rgba(15, 21, 33, 0.95);
+  border: 1px solid rgba(94, 155, 255, 0.15);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.context-stats p {
+  margin: 0.5rem 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.context-stats p:first-child {
+  margin-top: 0;
+}
+
+.context-stats p:last-child {
+  margin-bottom: 0;
+}
+
+.context-stats strong {
+  color: var(--text);
+}
+
+.context-stats span {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  padding: 1.5rem 2rem;
+  border-top: 1px solid rgba(94, 155, 255, 0.15);
+}
+
 @media (max-width: 1080px) {
   main {
     grid-template-columns: 1fr;
@@ -626,5 +817,11 @@ body.chat-mode header {
   }
   #chatView.visible {
     display: flex;
+  }
+  .modal {
+    padding: 1rem;
+  }
+  .modal-content {
+    max-height: 95vh;
   }
 }

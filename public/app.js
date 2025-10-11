@@ -23,7 +23,13 @@ const state = {
   conversations: [],
   activeConversationTitle: 'New chat',
   conversationsLoaded: false,
-  conversationLoading: false
+  conversationLoading: false,
+  settings: {
+    contextStrategy: 'sliding',
+    maxMessages: 20,
+    maxTokens: 4096,
+    temperature: 0.7
+  }
 };
 
 const elements = {
@@ -50,7 +56,21 @@ const elements = {
   newConversationBtn: document.getElementById('newConversationBtn'),
   conversationList: document.getElementById('conversationList'),
   conversationEmpty: document.getElementById('conversationEmpty'),
-  conversationTitle: document.getElementById('conversationTitle')
+  conversationTitle: document.getElementById('conversationTitle'),
+  settingsBtn: document.getElementById('settingsBtn'),
+  settingsModal: document.getElementById('settingsModal'),
+  closeSettingsBtn: document.getElementById('closeSettingsBtn'),
+  saveSettingsBtn: document.getElementById('saveSettingsBtn'),
+  cancelSettingsBtn: document.getElementById('cancelSettingsBtn'),
+  contextStrategy: document.getElementById('contextStrategy'),
+  maxMessages: document.getElementById('maxMessages'),
+  maxTokens: document.getElementById('maxTokens'),
+  temperature: document.getElementById('temperature'),
+  temperatureValue: document.getElementById('temperatureValue'),
+  currentMessageCount: document.getElementById('currentMessageCount'),
+  estimatedTokens: document.getElementById('estimatedTokens'),
+  willSendCount: document.getElementById('willSendCount'),
+  maxMessagesContainer: document.getElementById('maxMessagesContainer')
 };
 
 const TAURI = window.__TAURI__ || {};
@@ -339,10 +359,192 @@ function syncConversationCache() {
 }
 
 function getContextMessages() {
-  return state.conversation.map((record) => ({
+  const allMessages = state.conversation.map((record) => ({
     role: record.role,
     content: record.content
   }));
+
+  return applyContextStrategy(allMessages);
+}
+
+// Estimate token count (rough: 1 token ≈ 4 chars)
+function estimateTokens(text) {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+// Apply context strategy to filter messages
+function applyContextStrategy(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [];
+  }
+
+  const { contextStrategy, maxMessages, maxTokens } = state.settings;
+
+  // Send all messages
+  if (contextStrategy === 'all') {
+    return messages;
+  }
+
+  // Sliding window - last N messages
+  if (contextStrategy === 'sliding') {
+    if (messages.length <= maxMessages) {
+      return messages;
+    }
+    return messages.slice(-maxMessages);
+  }
+
+  // Smart limit - keep first + recent messages
+  if (contextStrategy === 'smart') {
+    if (messages.length <= maxMessages) {
+      return messages;
+    }
+
+    const result = [];
+    let tokenCount = 0;
+
+    // Keep first message for context
+    if (messages[0]) {
+      result.push(messages[0]);
+      tokenCount += estimateTokens(messages[0].content);
+    }
+
+    // Add recent messages respecting token limit
+    const recentMessages = messages.slice(-maxMessages + 1);
+    for (let i = recentMessages.length - 1; i >= 0; i--) {
+      const msg = recentMessages[i];
+      const msgTokens = estimateTokens(msg.content);
+
+      if (tokenCount + msgTokens <= maxTokens) {
+        result.unshift(msg);
+        tokenCount += msgTokens;
+      } else {
+        break;
+      }
+    }
+
+    return result;
+  }
+
+  return messages;
+}
+
+// Load settings from localStorage
+function loadSettings() {
+  try {
+    const saved = localStorage.getItem('privateai_settings');
+    if (saved) {
+      state.settings = { ...state.settings, ...JSON.parse(saved) };
+    }
+  } catch (error) {
+    console.warn('Failed to load settings:', error);
+  }
+}
+
+// Save settings to localStorage
+function saveSettings() {
+  try {
+    localStorage.setItem('privateai_settings', JSON.stringify(state.settings));
+    return true;
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+    return false;
+  }
+}
+
+// Update context stats display
+function updateContextStats() {
+  if (!elements.currentMessageCount) return;
+
+  const totalMessages = state.conversation.length;
+  const totalTokens = state.conversation.reduce((sum, msg) =>
+    sum + estimateTokens(msg.content), 0);
+
+  const filteredMessages = applyContextStrategy(state.conversation.map(m => ({
+    role: m.role,
+    content: m.content
+  })));
+  const willSendCount = filteredMessages.length;
+
+  elements.currentMessageCount.textContent = totalMessages;
+  elements.estimatedTokens.textContent = totalTokens;
+  elements.willSendCount.textContent = willSendCount;
+}
+
+// Open settings modal
+function openSettings() {
+  if (!elements.settingsModal) return;
+
+  // Populate current values
+  if (elements.contextStrategy) {
+    elements.contextStrategy.value = state.settings.contextStrategy;
+  }
+  if (elements.maxMessages) {
+    elements.maxMessages.value = state.settings.maxMessages;
+  }
+  if (elements.maxTokens) {
+    elements.maxTokens.value = state.settings.maxTokens;
+  }
+  if (elements.temperature) {
+    elements.temperature.value = state.settings.temperature;
+    if (elements.temperatureValue) {
+      elements.temperatureValue.textContent = state.settings.temperature;
+    }
+  }
+
+  // Update visibility of maxMessages based on strategy
+  updateMaxMessagesVisibility();
+
+  // Update stats
+  updateContextStats();
+
+  // Show modal
+  elements.settingsModal.classList.remove('hidden');
+}
+
+// Close settings modal
+function closeSettings() {
+  if (elements.settingsModal) {
+    elements.settingsModal.classList.add('hidden');
+  }
+}
+
+// Update max messages container visibility
+function updateMaxMessagesVisibility() {
+  if (!elements.maxMessagesContainer || !elements.contextStrategy) return;
+
+  const strategy = elements.contextStrategy.value;
+  if (strategy === 'all') {
+    elements.maxMessagesContainer.style.display = 'none';
+  } else {
+    elements.maxMessagesContainer.style.display = 'block';
+  }
+}
+
+// Save settings from modal
+function handleSaveSettings() {
+  // Update state
+  if (elements.contextStrategy) {
+    state.settings.contextStrategy = elements.contextStrategy.value;
+  }
+  if (elements.maxMessages) {
+    state.settings.maxMessages = parseInt(elements.maxMessages.value, 10);
+  }
+  if (elements.maxTokens) {
+    state.settings.maxTokens = parseInt(elements.maxTokens.value, 10);
+  }
+  if (elements.temperature) {
+    state.settings.temperature = parseFloat(elements.temperature.value);
+  }
+
+  // Save to localStorage
+  saveSettings();
+
+  // Close modal
+  closeSettings();
+
+  // Show confirmation
+  log('success', 'Settings saved successfully');
 }
 
 function buildConversationSummary(sessionId, messages = []) {
@@ -392,6 +594,7 @@ function renderConversationHistory(messages = []) {
     appendMessageBubble(role, record.content);
   });
   elements.chatHistory.scrollTop = elements.chatHistory.scrollHeight;
+  updateContextStats();
 }
 
 async function deleteConversation(sessionId) {
@@ -615,6 +818,7 @@ async function selectConversation(sessionId, { forceReload = false } = {}) {
   syncConversationCache();
   updateActiveConversationSummary();
   renderConversationHistory(state.conversation);
+  updateContextStats();
   elements.chatInput?.focus();
 }
 
@@ -909,6 +1113,7 @@ async function handleChatSubmit(event) {
   state.conversation.push(userRecord);
   syncConversationCache();
   updateActiveConversationSummary();
+  updateContextStats();
   await appendChatRecords([userRecord]);
 
   const historySlice = getContextMessages();
@@ -941,6 +1146,7 @@ async function handleChatSubmit(event) {
         state.conversation.push(assistantRecord);
         syncConversationCache();
         updateActiveConversationSummary();
+        updateContextStats();
         await appendChatRecords([assistantRecord]);
         void refreshConversationList({ preserveSelection: true });
       }
@@ -993,6 +1199,7 @@ async function handleChatSubmit(event) {
       state.conversation.push(assistantRecord);
       syncConversationCache();
       updateActiveConversationSummary();
+      updateContextStats();
       await appendChatRecords([assistantRecord]);
       void refreshConversationList({ preserveSelection: true });
     }
@@ -1072,6 +1279,36 @@ function attachEventListeners() {
     void chooseChatDirectory({ focusChat: true });
   });
 
+  // Settings modal
+  elements.settingsBtn?.addEventListener('click', openSettings);
+  elements.closeSettingsBtn?.addEventListener('click', closeSettings);
+  elements.cancelSettingsBtn?.addEventListener('click', closeSettings);
+  elements.saveSettingsBtn?.addEventListener('click', handleSaveSettings);
+
+  // Update temperature display
+  elements.temperature?.addEventListener('input', (e) => {
+    if (elements.temperatureValue) {
+      elements.temperatureValue.textContent = e.target.value;
+    }
+  });
+
+  // Update visibility when strategy changes
+  elements.contextStrategy?.addEventListener('change', () => {
+    updateMaxMessagesVisibility();
+    updateContextStats();
+  });
+
+  // Update stats when values change
+  elements.maxMessages?.addEventListener('input', updateContextStats);
+  elements.maxTokens?.addEventListener('input', updateContextStats);
+
+  // Close modal on backdrop click
+  elements.settingsModal?.addEventListener('click', (e) => {
+    if (e.target === elements.settingsModal) {
+      closeSettings();
+    }
+  });
+
   if (typeof listen === 'function') {
     listen('install-status', (event) => {
       if (typeof event?.payload === 'string') {
@@ -1115,6 +1352,7 @@ function attachEventListeners() {
 
 async function bootstrap() {
   setDefaultModelOptions();
+  loadSettings();
   attachEventListeners();
   startNewConversation({ focusInput: false, persistSummary: false });
   updateChatDirDisplay();

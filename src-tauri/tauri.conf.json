@@ -22,7 +22,12 @@
       },
       "fs": {
         "all": true,
-        "scope": ["$HOME/PrivateAI/**"]
+        "scope": ["$HOME/PrivateAI/**", "$HOME/**"]
+      },
+      "dialog": {
+        "all": false,
+        "open": true,
+        "save": false
       }
     },
     "bundle": {
