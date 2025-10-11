@@ -15,7 +15,8 @@ const state = {
   streamingBuffer: '',
   backend: 'ollama',
   availableRuntimes: [],
-  pythonBinary: null
+  pythonBinary: null,
+  modelPath: null
 };
 
 const elements = {
@@ -202,6 +203,40 @@ async function ensurePythonBinary() {
   }
 }
 
+async function ensurePythonEngineReady() {
+  if (!state.availableRuntimes.includes('python')) return true;
+  if (typeof invoke !== 'function') return false;
+
+  await ensurePythonBinary();
+  if (!state.pythonBinary) {
+    showError('Python runtime missing. Install llama-cpp-python or set PRIVATE_AI_PYTHON.');
+    return false;
+  }
+
+  try {
+    const healthy = await invoke('python_engine_health');
+    if (healthy) return true;
+  } catch (error) {
+    console.debug('python_engine_health check failed:', error);
+  }
+
+  try {
+    const startResult = await invoke('start_python_engine', {
+      modelPath: state.modelPath,
+      pythonBinary: state.pythonBinary
+    });
+    log('info', `Python engine restart: ${startResult}`);
+    const healthy = await invoke('python_engine_health');
+    if (healthy) {
+      return true;
+    }
+    showError('Python engine still not responding after restart. Check python-sidecar logs.');
+  } catch (error) {
+    showError(`Unable to start Python engine: ${error?.message ?? error}`);
+  }
+  return false;
+}
+
 async function loadAvailableRuntimes() {
   if (typeof invoke !== 'function') {
     if (!state.availableRuntimes.length) {
@@ -296,7 +331,8 @@ async function runSetup() {
       const resolvedModelPath =
         typeof startResult === 'string' && startResult !== 'already running'
           ? startResult
-          : modelPath;
+          : null;
+      state.modelPath = resolvedModelPath;
 
       log(
         'success',
@@ -453,15 +489,18 @@ async function handleChatSubmit(event) {
   elements.sendBtn.disabled = true;
 
   if (state.backend === 'python') {
+    const ready = await ensurePythonEngineReady();
+    if (!ready) {
+      elements.sendBtn.disabled = false;
+      elements.chatInput.focus();
+      return;
+    }
     try {
       const response = await invoke('python_chat', { message });
       appendMessageBubble('assistant', response);
     } catch (error) {
       console.error(error);
-      appendMessageBubble(
-        'assistant',
-        `Python sidecar error: ${error?.message ?? error}`
-      );
+      appendMessageBubble('assistant', `Python sidecar error: ${error?.message ?? error}`);
     } finally {
       elements.sendBtn.disabled = false;
       elements.chatInput.focus();
@@ -527,6 +566,7 @@ async function resetWizard() {
   toggleViews(false);
   setDefaultModelOptions();
   updateBackendAvailability();
+  state.modelPath = null;
 }
 
 function attachEventListeners() {

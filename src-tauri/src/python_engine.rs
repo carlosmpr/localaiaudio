@@ -214,6 +214,12 @@ pub async fn start_python_engine(
         .map_err(|e| format!("Unable to clone log file handle: {e}"))?;
 
     let python = python_binary(python_binary_override.as_deref());
+    if python.trim().is_empty() {
+        return Err("Python binary path is empty.".into());
+    }
+    if !Path::new(&python).exists() {
+        return Err(format!("Python binary not found at {python}"));
+    }
     let mut command = Command::new(&python);
     command
         .arg(&script_path)

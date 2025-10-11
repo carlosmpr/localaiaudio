@@ -91,7 +91,8 @@ async function initializePythonRuntime() {
     // Start Python engine with the downloaded model
     appendStatus('Starting Python AI engine...');
     const modelPath = `${await invoke('setup_storage').then(p => p.base_dir)}/Models/gemma-2-2b-it-Q4_K_M.gguf`;
-    const result = await invoke('start_python_engine', { modelPath });
+    const pythonBinary = await invoke('resolve_python_binary');
+    const result = await invoke('start_python_engine', { modelPath, pythonBinary });
     appendStatus(`Python engine started: ${result}`);
 
     // Hide Ollama-specific buttons
