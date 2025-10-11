@@ -18,6 +18,14 @@ let currentRuntime = null;
 let currentTypingIndicator = null;
 let pythonHistory = [];
 let ollamaHistory = [];
+let chatsDir = null;
+
+// Generate a session ID
+function generateSessionId() {
+  const timestamp = Date.now().toString(36);
+  const randomPart = Math.random().toString(36).substring(2, 10);
+  return `${timestamp}-${randomPart}`;
+}
 
 // Listen for status updates
 listen('install-status', (event) => {
@@ -103,6 +111,10 @@ async function initializeApp() {
 async function initializePythonRuntime() {
   try {
     pythonHistory = [];
+    // Generate new session ID
+    activeSessionId = generateSessionId();
+    appendStatus(`Starting new session: ${activeSessionId}`);
+
     // Scan hardware
     appendStatus('Scanning hardware...');
     const hardware = await invoke('scan_hardware');
@@ -111,7 +123,8 @@ async function initializePythonRuntime() {
 
     // Setup storage
     appendStatus('Setting up storage directories...');
-    await invoke('setup_storage');
+    const storagePaths = await invoke('setup_storage');
+    chatsDir = storagePaths.chats;
     appendStatus('Storage setup complete');
 
     // Start Python engine with the downloaded model
@@ -139,6 +152,10 @@ async function initializeOllamaRuntime() {
   try {
     pythonHistory = [];
     ollamaHistory = [];
+    // Generate new session ID
+    activeSessionId = generateSessionId();
+    appendStatus(`Starting new session: ${activeSessionId}`);
+
     // Scan hardware
     appendStatus('Scanning hardware...');
     const hardware = await invoke('scan_hardware');
@@ -147,7 +164,8 @@ async function initializeOllamaRuntime() {
 
     // Setup storage
     appendStatus('Setting up storage directories...');
-    await invoke('setup_storage');
+    const storagePaths = await invoke('setup_storage');
+    chatsDir = storagePaths.chats;
     appendStatus('Storage setup complete');
 
     // Check if Ollama is installed
@@ -385,13 +403,24 @@ listen('python-stream-token', (event) => {
   }
 });
 
-listen('python-stream-done', () => {
+listen('python-stream-done', async () => {
   const bubble = currentStreamBubble;
   clearTypingIndicator();
   if (bubble) {
     const content = bubble.textContent || '';
     if (content) {
       pythonHistory.push({ role: 'assistant', content });
+
+      // Save the assistant response to disk
+      try {
+        await invoke('append_chat_records', {
+          sessionId: activeSessionId,
+          records: [{ role: 'assistant', content, timestamp: new Date().toISOString() }],
+          chatsDir: chatsDir
+        });
+      } catch (error) {
+        console.error('Failed to save assistant message:', error);
+      }
     }
   }
   currentStreamBubble = null;
@@ -415,28 +444,67 @@ async function sendMessage(event) {
     if (currentRuntime === 'python') {
       appendStatus('Sending message to Python AI...');
 
+      // Save user message to disk
+      try {
+        await invoke('append_chat_records', {
+          sessionId: activeSessionId,
+          records: [{ role: 'user', content: message, timestamp: new Date().toISOString() }],
+          chatsDir: chatsDir
+        });
+      } catch (error) {
+        console.error('Failed to save user message:', error);
+      }
+
       // Create empty bubble for streaming response
       currentStreamBubble = appendMessageBubble({ role: 'assistant', content: '' });
       attachTypingIndicator(currentStreamBubble);
 
-      // Start streaming
+      // Start streaming - pass sessionId and chatsDir to backend
       pythonHistory.push({ role: 'user', content: message });
       await invoke('python_chat_stream', {
         message,
-        history: pythonHistory
+        history: [],  // Send empty array - backend will load from disk
+        sessionId: activeSessionId,
+        chatsDir: chatsDir
       });
 
     } else if (currentRuntime === 'ollama') {
       currentModel = modelSelect.value;
       appendStatus(`Sending message to ${currentModel}...`);
+
+      // Save user message to disk
+      try {
+        await invoke('append_chat_records', {
+          sessionId: activeSessionId,
+          records: [{ role: 'user', content: message, timestamp: new Date().toISOString() }],
+          chatsDir: chatsDir
+        });
+      } catch (error) {
+        console.error('Failed to save user message:', error);
+      }
+
       ollamaHistory.push({ role: 'user', content: message });
       const response = await invoke('send_chat_message', {
         message: message,
         model: currentModel,
-        history: ollamaHistory
+        history: [],  // Send empty array - backend will load from disk
+        sessionId: activeSessionId,
+        chatsDir: chatsDir
       });
       appendMessageBubble({ role: 'assistant', content: response });
       ollamaHistory.push({ role: 'assistant', content: response });
+
+      // Save assistant response to disk
+      try {
+        await invoke('append_chat_records', {
+          sessionId: activeSessionId,
+          records: [{ role: 'assistant', content: response, timestamp: new Date().toISOString() }],
+          chatsDir: chatsDir
+        });
+      } catch (error) {
+        console.error('Failed to save assistant message:', error);
+      }
+
       appendStatus('Response received');
       isSending = false;
       chatInput.focus();

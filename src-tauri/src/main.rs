@@ -17,48 +17,69 @@ use python_engine::PythonEngineState;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
+use tauri::Manager;
 #[cfg(feature = "runtime-python")]
 use tauri::State;
+
+fn history_inputs_to_messages(history: Vec<ConversationHistoryInput>) -> Vec<ConversationMessage> {
+    history
+        .into_iter()
+        .map(|m| ConversationMessage {
+            role: m.role,
+            content: m.content,
+        })
+        .collect::<Vec<_>>()
+}
+
+fn ensure_trailing_user(messages: &mut Vec<ConversationMessage>, latest_user: &str) {
+    if messages
+        .last()
+        .map(|entry| entry.role != "user")
+        .unwrap_or(true)
+    {
+        messages.push(ConversationMessage {
+            role: "user".into(),
+            content: latest_user.to_string(),
+        });
+    } else if let Some(last) = messages.last_mut() {
+        last.content = latest_user.to_string();
+    }
+}
 
 async fn resolve_history_messages(
     history: Vec<ConversationHistoryInput>,
     session_id: Option<String>,
     chats_dir: Option<String>,
     latest_user: &str,
-) -> Result<Vec<ConversationMessage>, String> {
+) -> Result<(Vec<ConversationMessage>, &'static str), String> {
+    let mut in_memory = history_inputs_to_messages(history);
+    ensure_trailing_user(&mut in_memory, latest_user);
+
     if let Some(session_id) = session_id {
         let dir = conversation::resolve_chats_dir(chats_dir.as_deref())?;
-        let mut records = conversation::load_records(&dir, &session_id, None).await?;
-        if let Some(last) = records.last() {
-            if last.role != "user" {
-                records.push(ChatRecord {
-                    role: "user".into(),
-                    content: latest_user.to_string(),
-                    timestamp: None,
-                });
-            }
-        } else {
-            records.push(ChatRecord {
-                role: "user".into(),
-                content: latest_user.to_string(),
-                timestamp: None,
-            });
+        let records = conversation::load_records(&dir, &session_id, None).await?;
+
+        if records.is_empty() {
+            return Ok((in_memory, "in-memory"));
         }
-        Ok(records
+
+        let mut persisted = records
             .into_iter()
             .map(|record| ConversationMessage {
                 role: record.role,
                 content: record.content,
             })
-            .collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        ensure_trailing_user(&mut persisted, latest_user);
+
+        if persisted.len() < in_memory.len() {
+            persisted.extend(in_memory.into_iter().skip(persisted.len()));
+        }
+
+        Ok((persisted, "persisted"))
     } else {
-        Ok(history
-            .into_iter()
-            .map(|m| ConversationMessage {
-                role: m.role,
-                content: m.content,
-            })
-            .collect::<Vec<_>>())
+        Ok((in_memory, "in-memory"))
     }
 }
 
@@ -208,8 +229,18 @@ async fn send_chat_message(
     chats_dir: Option<String>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    let history_messages =
+    let (history_messages, source) =
         resolve_history_messages(history, session_id, chats_dir, &message).await?;
+    app_handle
+        .emit_all(
+            "chat-status",
+            format!(
+                "Using {} prior message(s) for context ({})",
+                history_messages.len(),
+                source
+            ),
+        )
+        .ok();
     ollama::send_chat_message(message, model, history_messages, app_handle).await
 }
 
@@ -279,7 +310,7 @@ async fn python_chat(
     session_id: Option<String>,
     chats_dir: Option<String>,
 ) -> Result<String, String> {
-    let history_messages =
+    let (history_messages, _) =
         resolve_history_messages(history, session_id, chats_dir, &message).await?;
     python_engine::python_chat(state, message, history_messages).await
 }
@@ -294,8 +325,18 @@ async fn python_chat_stream(
     session_id: Option<String>,
     chats_dir: Option<String>,
 ) -> Result<(), String> {
-    let history_messages =
+    let (history_messages, source) =
         resolve_history_messages(history, session_id, chats_dir, &message).await?;
+    app_handle
+        .emit_all(
+            "chat-status",
+            format!(
+                "Using {} prior message(s) for context ({})",
+                history_messages.len(),
+                source
+            ),
+        )
+        .ok();
     python_engine::python_chat_stream(state, app_handle, message, history_messages).await
 }
 

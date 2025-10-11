@@ -66,25 +66,25 @@ class LlamaEngine:
         messages: Optional[list],
     ) -> list:
         if messages:
+            # When messages are provided, use them as-is (history from disk)
+            # Filter to only include user and assistant roles (no system for Gemma compatibility)
             prepared = []
-            has_system = any(
-                isinstance(m, dict) and m.get("role") == "system" for m in messages
-            )
-            if not has_system:
-                prepared.append(
-                    {"role": "system", "content": system or DEFAULT_SYSTEM_PROMPT}
-                )
             for msg in messages:
                 if isinstance(msg, dict) and "role" in msg and "content" in msg:
-                    prepared.append({
-                        "role": msg.get("role"),
-                        "content": msg.get("content"),
-                    })
+                    role = msg.get("role")
+                    # Only include user and assistant roles (skip system)
+                    if role in ["user", "assistant"]:
+                        prepared.append({
+                            "role": role,
+                            "content": msg.get("content"),
+                        })
             return prepared
 
+        # For simple prompts without history (legacy support)
+        # Gemma models don't support system role, so include it in user message
+        system_content = system or DEFAULT_SYSTEM_PROMPT
         return [
-            {"role": "system", "content": system or DEFAULT_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": f"{system_content}\n\n{prompt}"},
         ]
 
     def chat(
