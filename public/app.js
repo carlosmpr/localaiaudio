@@ -14,7 +14,8 @@ const state = {
   streamingBubble: null,
   streamingBuffer: '',
   backend: 'ollama',
-  availableRuntimes: ['ollama', 'python']
+  availableRuntimes: [],
+  pythonBinary: null
 };
 
 const elements = {
@@ -167,6 +168,13 @@ function updateBackendAvailability() {
     }
   });
 
+  if (!runtimes.includes(state.backend)) {
+    state.backend = runtimes[0] || state.backend;
+    if (select && runtimes.includes(state.backend)) {
+      select.value = state.backend;
+    }
+  }
+
   if (runtimes.length <= 1) {
     selectorWrap.classList.add('hidden');
     if (runtimes.length === 1) {
@@ -180,8 +188,25 @@ function updateBackendAvailability() {
   updateBackendUi();
 }
 
+async function ensurePythonBinary() {
+  if (!state.availableRuntimes.includes('python')) return;
+  if (state.pythonBinary) return;
+  if (typeof invoke !== 'function') return;
+  try {
+    const binary = await invoke('resolve_python_binary');
+    if (typeof binary === 'string' && binary.trim()) {
+      state.pythonBinary = binary.trim();
+    }
+  } catch (error) {
+    console.warn('Unable to resolve python binary automatically.', error);
+  }
+}
+
 async function loadAvailableRuntimes() {
   if (typeof invoke !== 'function') {
+    if (!state.availableRuntimes.length) {
+      state.availableRuntimes = ['ollama', 'python'];
+    }
     updateBackendAvailability();
     return;
   }
@@ -193,15 +218,8 @@ async function loadAvailableRuntimes() {
     }
   } catch (error) {
     console.warn('Unable to load available runtimes, falling back to defaults.', error);
-  }
-
-  if (!state.availableRuntimes.includes(state.backend)) {
-    state.backend = state.availableRuntimes[0] || state.backend;
-  }
-
-  if (elements.backendSelect) {
-    if (!state.availableRuntimes.includes(elements.backendSelect.value)) {
-      elements.backendSelect.value = state.backend;
+    if (!state.availableRuntimes.length) {
+      state.availableRuntimes = ['ollama', 'python'];
     }
   }
 
@@ -255,6 +273,11 @@ async function runSetup() {
     log('success', `Storage ready at ${paths.base_dir}`);
 
     if (state.backend === 'python') {
+      await ensurePythonBinary();
+      if (!state.pythonBinary) {
+        throw new Error('Python runtime not found. Install llama-cpp-python or set PRIVATE_AI_PYTHON.');
+      }
+
       setStep('install');
       elements.stepStatus.textContent = 'Starting embedded Python runtime...';
       log('info', 'Launching llama-cpp sidecar.');
@@ -265,13 +288,9 @@ async function runSetup() {
         console.debug('Python engine stop (preflight) ignored:', preflightErr);
       }
 
-      const modelPath =
-        state.paths?.models != null
-          ? `${String(state.paths.models).replace(/\\/g, '/')}/gemma-1b-it-q4_0.gguf`
-          : null;
-
       const startResult = await invoke('start_python_engine', {
-        modelPath
+        modelPath: null,
+        pythonBinary: state.pythonBinary
       });
 
       const resolvedModelPath =
@@ -308,7 +327,12 @@ async function runSetup() {
             path: resolvedModelPath ?? null
           },
           paths: state.paths,
-          backend: 'python'
+          backend: 'python',
+          runtime: {
+            python: {
+              binary: state.pythonBinary
+            }
+          }
         }
       });
 
@@ -500,10 +524,6 @@ async function resetWizard() {
   elements.startSetupBtn.disabled = false;
   state.streamingBubble = null;
   state.streamingBuffer = '';
-  state.backend = state.availableRuntimes[0] || 'ollama';
-  if (elements.backendSelect) {
-    elements.backendSelect.value = state.backend;
-  }
   toggleViews(false);
   setDefaultModelOptions();
   updateBackendAvailability();
@@ -520,8 +540,8 @@ function attachEventListeners() {
     const chosen = elements.backendSelect.value || state.backend;
     if (state.availableRuntimes.includes(chosen)) {
       state.backend = chosen;
-    } else {
-      state.backend = state.availableRuntimes[0] || 'ollama';
+    } else if (state.availableRuntimes.length) {
+      state.backend = state.availableRuntimes[0];
       elements.backendSelect.value = state.backend;
     }
     updateBackendUi();
@@ -591,6 +611,8 @@ async function bootstrap() {
       state.hardware = config.hardware;
       state.paths = config.paths;
       if (state.backend === 'python') {
+        state.pythonBinary = config.runtime?.python?.binary || state.pythonBinary;
+        await ensurePythonBinary();
         let healthy = false;
         try {
           healthy = await invoke('python_engine_health');
@@ -600,7 +622,8 @@ async function bootstrap() {
         if (!healthy) {
           try {
             await invoke('start_python_engine', {
-              modelPath: config.model?.path ?? null
+              modelPath: config.model?.path ?? null,
+              pythonBinary: state.pythonBinary
             });
             healthy = await invoke('python_engine_health');
           } catch (error) {

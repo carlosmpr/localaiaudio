@@ -30,21 +30,26 @@ impl PythonEngineState {
     }
 }
 
-fn python_binary() -> String {
-    // Try environment variable first
-    if let Ok(python_path) = std::env::var("PRIVATE_AI_PYTHON") {
-        return python_path;
+fn python_binary(override_path: Option<&str>) -> String {
+    if let Some(path) = override_path {
+        if !path.is_empty() {
+            return path.to_string();
+        }
     }
 
-    // Try dedicated venv in user's home directory
+    if let Ok(python_path) = std::env::var("PRIVATE_AI_PYTHON") {
+        if !python_path.is_empty() {
+            return python_path;
+        }
+    }
+
     if let Ok(home) = std::env::var("HOME") {
-        let venv_python = format!("{}/.privateai-venv/bin/python", home);
+        let venv_python = format!("{home}/.privateai-venv/bin/python");
         if std::path::Path::new(&venv_python).exists() {
             return venv_python;
         }
     }
 
-    // Fallback to system Python
     if cfg!(target_os = "windows") {
         "python".to_string()
     } else {
@@ -176,6 +181,7 @@ pub async fn start_python_engine(
     state: State<'_, PythonEngineState>,
     app_handle: AppHandle,
     model_path: Option<String>,
+    python_binary_override: Option<String>,
 ) -> Result<String, String> {
     {
         let mut guard = state.child.lock().await;
@@ -207,7 +213,7 @@ pub async fn start_python_engine(
         .try_clone()
         .map_err(|e| format!("Unable to clone log file handle: {e}"))?;
 
-    let python = python_binary();
+    let python = python_binary(python_binary_override.as_deref());
     let mut command = Command::new(&python);
     command
         .arg(&script_path)
@@ -323,6 +329,10 @@ pub async fn python_chat(
         .map_err(|e| format!("Invalid JSON from sidecar: {e}"))?;
 
     Ok(reply.reply)
+}
+
+pub fn resolve_python_binary() -> String {
+    python_binary(None)
 }
 
 pub async fn python_chat_stream(

@@ -10,6 +10,7 @@ mod python_engine;
 mod storage;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::path::PathBuf;
 #[cfg(feature = "runtime-python")]
 use tauri::State;
@@ -61,6 +62,8 @@ struct AppConfig {
     model: ModelConfig,
     paths: StoragePaths,
     #[serde(default)]
+    runtime: RuntimeConfig,
+    #[serde(default)]
     backend: Option<String>,
 }
 
@@ -80,6 +83,20 @@ struct StoragePaths {
     models: PathBuf,
     logs: PathBuf,
     index: PathBuf,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct RuntimeConfig {
+    #[serde(default)]
+    ollama: Option<Value>,
+    #[serde(default)]
+    python: Option<PythonRuntimeConfig>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct PythonRuntimeConfig {
+    #[serde(default)]
+    binary: Option<String>,
 }
 
 #[tauri::command]
@@ -173,8 +190,9 @@ async fn start_python_engine(
     state: State<'_, PythonEngineState>,
     app_handle: tauri::AppHandle,
     model_path: Option<String>,
+    python_binary: Option<String>,
 ) -> Result<String, String> {
-    python_engine::start_python_engine(state, app_handle, model_path).await
+    python_engine::start_python_engine(state, app_handle, model_path, python_binary).await
 }
 
 #[cfg(feature = "runtime-python")]
@@ -208,6 +226,12 @@ async fn python_chat_stream(
     python_engine::python_chat_stream(state, app_handle, message).await
 }
 
+#[cfg(feature = "runtime-python")]
+#[tauri::command]
+fn resolve_python_binary() -> String {
+    python_engine::resolve_python_binary()
+}
+
 fn main() {
     let builder = tauri::Builder::default();
 
@@ -234,6 +258,7 @@ fn main() {
         python_engine_health,
         python_chat,
         python_chat_stream,
+        resolve_python_binary,
     ]);
 
     #[cfg(all(feature = "runtime-ollama", not(feature = "runtime-python")))]
@@ -266,6 +291,7 @@ fn main() {
         python_engine_health,
         python_chat,
         python_chat_stream,
+        resolve_python_binary,
     ]);
 
     #[cfg(all(not(feature = "runtime-ollama"), not(feature = "runtime-python")))]
