@@ -4,6 +4,7 @@
 mod conversation;
 mod hardware;
 mod model_catalog;
+mod model_downloader;
 #[cfg(feature = "runtime-ollama")]
 mod ollama;
 #[cfg(feature = "runtime-python")]
@@ -399,6 +400,16 @@ async fn delete_chat_session(
     conversation::delete_conversation(&dir, &session_id).await
 }
 
+#[tauri::command]
+async fn download_model(
+    target_dir: String,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let target_path = PathBuf::from(target_dir);
+    let downloaded_path = model_downloader::download_default_model(&target_path, app_handle).await?;
+    Ok(downloaded_path.to_string_lossy().to_string())
+}
+
 fn main() {
     let builder = tauri::Builder::default();
 
@@ -431,6 +442,7 @@ fn main() {
         load_chat_history,
         list_chat_sessions,
         delete_chat_session,
+        download_model,
     ]);
 
     #[cfg(all(feature = "runtime-ollama", not(feature = "runtime-python")))]
@@ -474,6 +486,7 @@ fn main() {
         load_chat_history,
         list_chat_sessions,
         delete_chat_session,
+        download_model,
     ]);
 
     #[cfg(all(not(feature = "runtime-ollama"), not(feature = "runtime-python")))]

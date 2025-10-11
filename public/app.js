@@ -89,7 +89,7 @@ const STEP_LABELS = {
   },
   python: {
     install: 'Start Python engine',
-    model: 'Verify model & health'
+    model: 'Download model'
   }
 };
 
@@ -974,6 +974,25 @@ async function runSetup() {
         throw new Error('Python runtime not found. Install llama-cpp-python or set PRIVATE_AI_PYTHON.');
       }
 
+      // Step 3: Download model if not present
+      setStep('model');
+      const modelsDir = String(state.paths.models).replace(/\\/g, '/');
+      const expectedModelPath = `${modelsDir}/gemma-3-1b-it-Q4_0.gguf`;
+
+      elements.stepStatus.textContent = 'Checking for AI model...';
+      log('info', 'Checking for Gemma 3 1B model...');
+
+      try {
+        const downloadedModelPath = await invoke('download_model', {
+          targetDir: modelsDir
+        });
+        state.modelPath = downloadedModelPath;
+        log('success', 'Model ready!');
+      } catch (error) {
+        console.error('Model download error:', error);
+        throw new Error(`Failed to download model: ${error?.message ?? error}`);
+      }
+
       setStep('install');
       elements.stepStatus.textContent = 'Starting embedded Python runtime...';
       log('info', 'Launching llama-cpp sidecar.');
@@ -984,11 +1003,7 @@ async function runSetup() {
         console.debug('Python engine stop (preflight) ignored:', preflightErr);
       }
 
-      const defaultModelPath =
-        state.modelPath ||
-        (state.paths?.models != null
-          ? `${String(state.paths.models).replace(/\\/g, '/')}/gemma-1b-it-q4_0.gguf`
-          : null);
+      const defaultModelPath = state.modelPath || expectedModelPath;
 
       const startResult = await invoke('start_python_engine', {
         modelPath: defaultModelPath,
@@ -1006,7 +1021,6 @@ async function runSetup() {
         `Python sidecar started${resolvedModelPath ? ` (model: ${resolvedModelPath})` : ''}.`
       );
 
-      setStep('model');
       elements.stepStatus.textContent = 'Checking Python engine health...';
       const healthy = await invoke('python_engine_health');
 
@@ -1532,6 +1546,20 @@ function attachEventListeners() {
         if (state.backend === 'python') {
           elements.stepStatus.textContent = event.payload;
         }
+      }
+    });
+    listen('model-download-status', (event) => {
+      if (typeof event?.payload === 'string') {
+        log('info', event.payload);
+        elements.stepStatus.textContent = event.payload;
+      }
+    });
+    listen('model-download-progress', (event) => {
+      if (typeof event?.payload === 'object' && event.payload !== null) {
+        const { percent, downloaded_mb, total_mb } = event.payload;
+        const message = `Downloading model: ${percent}% (${downloaded_mb}/${total_mb} MB)`;
+        log('info', message);
+        elements.stepStatus.textContent = message;
       }
     });
   }

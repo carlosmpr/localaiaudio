@@ -21,7 +21,7 @@ dirs = "5.0"
 futures-util = "0.3"
 
 [features]
-default = ["runtime-ollama", "runtime-python"]
+default = ["runtime-python"]
 runtime-ollama = []
 runtime-python = []
 custom-protocol = ["tauri/custom-protocol"]

@@ -110,7 +110,7 @@ fn resolve_sidecar_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
 
 async fn default_model_path() -> Result<PathBuf, String> {
     let base = storage::get_base_dir().await?;
-    Ok(base.join("Models").join("gemma-1b-it-q4_0.gguf"))
+    Ok(base.join("Models").join("gemma-3-1b-it-Q4_0.gguf"))
 }
 
 fn first_available_model(models_dir: &Path) -> Option<PathBuf> {
