@@ -610,6 +610,24 @@ body.chat-mode header {
 .controls {
   display: flex;
   justify-content: flex-end;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.stop-btn {
+  padding: 0.6rem 1.3rem;
+  background: rgba(255, 80, 80, 0.15);
+  color: #ff8080;
+  border-color: rgba(255, 80, 80, 0.3);
+}
+
+.stop-btn:hover {
+  background: rgba(255, 80, 80, 0.25);
+  border-color: rgba(255, 80, 80, 0.5);
+}
+
+.stop-btn.hidden {
+  display: none;
 }
 
 #sendBtn {

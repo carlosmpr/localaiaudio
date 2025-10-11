@@ -13,6 +13,8 @@ const state = {
   paths: null,
   streamingBubble: null,
   streamingBuffer: '',
+  isStreaming: false,
+  shouldStopStreaming: false,
   backend: 'ollama',
   availableRuntimes: [],
   pythonBinary: null,
@@ -51,6 +53,7 @@ const elements = {
   chatForm: document.getElementById('chatForm'),
   chatInput: document.getElementById('chatInput'),
   sendBtn: document.getElementById('sendBtn'),
+  stopBtn: document.getElementById('stopBtn'),
   activeModel: document.getElementById('activeModel'),
   changeChatDirBtn: document.getElementById('changeChatDirBtn'),
   newConversationBtn: document.getElementById('newConversationBtn'),
@@ -293,6 +296,56 @@ function clearTypingIndicator() {
   if (state.streamingBubble) {
     state.streamingBubble.classList.remove('streaming');
   }
+}
+
+function showStopButton() {
+  if (elements.stopBtn) {
+    elements.stopBtn.classList.remove('hidden');
+  }
+  if (elements.sendBtn) {
+    elements.sendBtn.classList.add('hidden');
+  }
+}
+
+function hideStopButton() {
+  if (elements.stopBtn) {
+    elements.stopBtn.classList.add('hidden');
+  }
+  if (elements.sendBtn) {
+    elements.sendBtn.classList.remove('hidden');
+  }
+}
+
+function stopStreaming() {
+  state.shouldStopStreaming = true;
+  clearTypingIndicator();
+
+  if (state.streamingBubble && state.streamingBuffer) {
+    state.streamingBubble.textContent = state.streamingBuffer + ' [Stopped]';
+  }
+
+  hideStopButton();
+  elements.sendBtn.disabled = false;
+  elements.chatInput.focus();
+
+  // Save the partial response
+  if (state.streamingBuffer) {
+    const assistantRecord = {
+      role: 'assistant',
+      content: state.streamingBuffer + ' [Stopped by user]',
+      timestamp: new Date().toISOString()
+    };
+    state.conversation.push(assistantRecord);
+    syncConversationCache();
+    updateActiveConversationSummary();
+    updateContextStats();
+    appendChatRecords([assistantRecord]).catch(console.error);
+    refreshConversationList({ preserveSelection: true }).catch(console.error);
+  }
+
+  state.streamingBubble = null;
+  state.streamingBuffer = '';
+  state.isStreaming = false;
 }
 
 function generateSessionId() {
@@ -1103,6 +1156,9 @@ async function handleChatSubmit(event) {
   appendMessageBubble('user', message);
   elements.chatInput.value = '';
   elements.sendBtn.disabled = true;
+  state.isStreaming = true;
+  state.shouldStopStreaming = false;
+  showStopButton();
 
   const timestamp = new Date().toISOString();
   const userRecord = {
@@ -1160,12 +1216,15 @@ async function handleChatSubmit(event) {
       }
     } finally {
       clearTypingIndicator();
-      if (state.streamingBubble) {
+      if (state.streamingBubble && !state.shouldStopStreaming) {
         state.streamingBubble.textContent = state.streamingBuffer || state.streamingBubble.textContent;
       }
       state.streamingBubble = null;
       state.streamingBuffer = '';
       state.typingIndicator = null;
+      state.isStreaming = false;
+      state.shouldStopStreaming = false;
+      hideStopButton();
       elements.sendBtn.disabled = false;
       elements.chatInput.focus();
     }
@@ -1215,6 +1274,9 @@ async function handleChatSubmit(event) {
     state.streamingBubble = null;
     state.streamingBuffer = '';
     state.typingIndicator = null;
+    state.isStreaming = false;
+    state.shouldStopStreaming = false;
+    hideStopButton();
     elements.sendBtn.disabled = false;
     elements.chatInput.focus();
   }
@@ -1255,6 +1317,7 @@ async function resetWizard() {
 function attachEventListeners() {
   elements.startSetupBtn.addEventListener('click', runSetup);
   elements.chatForm.addEventListener('submit', handleChatSubmit);
+  elements.stopBtn?.addEventListener('click', stopStreaming);
   elements.newConversationBtn?.addEventListener('click', () => {
     startNewConversation({ focusInput: true, persistSummary: true });
   });
@@ -1328,6 +1391,9 @@ function attachEventListeners() {
       }
     });
     listen('chat-stream', (event) => {
+      if (state.shouldStopStreaming) {
+        return;
+      }
       if (typeof event?.payload === 'object' && event.payload !== null) {
         const { content } = event.payload;
         state.streamingBuffer = content || '';
@@ -1336,6 +1402,8 @@ function attachEventListeners() {
             clearTypingIndicator();
           }
           state.streamingBubble.textContent = state.streamingBuffer;
+          // Auto-scroll to bottom as messages come in
+          elements.chatHistory.scrollTop = elements.chatHistory.scrollHeight;
         }
       }
     });
