@@ -38,8 +38,8 @@ struct OllamaStreamResponse {
 }
 
 #[derive(Debug, Serialize, Clone)]
-struct ChatStreamPayload {
-    content: String,
+pub struct ChatStreamPayload {
+    pub content: String,
 }
 
 pub async fn check_ollama_installed() -> Result<bool, String> {

@@ -61,6 +61,7 @@ class LlamaEngine:
 
     def chat(self, prompt: str, system: Optional[str] = None) -> str:
         messages = [
+            {"role": "system", "content": system or DEFAULT_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ]
         with self._lock:
@@ -90,16 +91,32 @@ class LlamaEngine:
     def chat_stream(self, prompt: str, system: Optional[str] = None):
         """Stream chat completion tokens as they are generated."""
         messages = [
+            {"role": "system", "content": system or DEFAULT_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ]
         with self._lock:
             stream = self._llm.create_chat_completion(messages=messages, stream=True)
-            for chunk in stream:
-                if chunk and "choices" in chunk and len(chunk["choices"]) > 0:
-                    delta = chunk["choices"][0].get("delta", {})
-                    content = delta.get("content", "")
-                    if content:
-                        yield content
+
+        for chunk in stream:
+            if not chunk or "choices" not in chunk or not chunk["choices"]:
+                continue
+
+            delta = chunk["choices"][0].get("delta", {})
+            content = delta.get("content")
+
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict):
+                        text = part.get("text")
+                        if text:
+                            yield text
+            elif isinstance(content, str):
+                if content:
+                    yield content
+
+            finish = chunk["choices"][0].get("finish_reason")
+            if finish:
+                break
 
 
 class RequestHandler(BaseHTTPRequestHandler):

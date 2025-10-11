@@ -1,6 +1,7 @@
 use crate::storage;
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -19,6 +20,11 @@ pub struct PythonEngineState {
 #[derive(Deserialize)]
 struct ChatReply {
     reply: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct PythonStreamPayload {
+    content: String,
 }
 
 impl PythonEngineState {
@@ -377,34 +383,37 @@ pub async fn python_chat_stream(
     // Stream the response
     use futures_util::StreamExt;
     let mut stream = response.bytes_stream();
-
     let mut buffer = String::new();
+    let mut accumulated = String::new();
+
     while let Some(item) = stream.next().await {
-        match item {
-            Ok(bytes) => {
-                buffer.push_str(&String::from_utf8_lossy(&bytes));
+        let bytes = item.map_err(|e| format!("Stream read error: {e}"))?;
+        buffer.push_str(&String::from_utf8_lossy(&bytes));
 
-                // Process complete SSE events
-                while let Some(pos) = buffer.find("\n\n") {
-                    let event = buffer[..pos].to_string();
-                    buffer = buffer[pos + 2..].to_string();
+        while let Some(pos) = buffer.find("\n\n") {
+            let event = buffer[..pos].to_string();
+            buffer = buffer[pos + 2..].to_string();
 
-                    // Parse SSE event
-                    if let Some(data_line) = event.strip_prefix("data: ") {
-                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(data_line) {
-                            if let Some(token) = json.get("token").and_then(|t| t.as_str()) {
-                                app_handle.emit_all("python-stream-token", token).ok();
-                            } else if json.get("done").and_then(|d| d.as_bool()).unwrap_or(false) {
-                                app_handle.emit_all("python-stream-done", "").ok();
-                                return Ok(());
-                            } else if let Some(error) = json.get("error").and_then(|e| e.as_str()) {
-                                return Err(format!("Stream error: {error}"));
-                            }
-                        }
-                    }
+            if let Some(data_line) = event.strip_prefix("data: ") {
+                let json: Value = serde_json::from_str(data_line)
+                    .map_err(|e| format!("Invalid stream JSON: {e}"))?;
+
+                if let Some(token) = json.get("token").and_then(|t| t.as_str()) {
+                    accumulated.push_str(token);
+                    app_handle
+                        .emit_all(
+                            "chat-stream",
+                            PythonStreamPayload {
+                                content: accumulated.clone(),
+                            },
+                        )
+                        .ok();
+                } else if json.get("done").and_then(|d| d.as_bool()).unwrap_or(false) {
+                    return Ok(());
+                } else if let Some(error) = json.get("error").and_then(|e| e.as_str()) {
+                    return Err(format!("Stream error: {error}"));
                 }
             }
-            Err(e) => return Err(format!("Stream read error: {e}")),
         }
     }
 

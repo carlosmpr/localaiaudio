@@ -225,6 +225,9 @@ async function ensurePythonEngineReady() {
       modelPath: state.modelPath,
       pythonBinary: state.pythonBinary
     });
+    if (typeof startResult === 'string' && startResult !== 'already running') {
+      state.modelPath = startResult;
+    }
     log('info', `Python engine restart: ${startResult}`);
     const healthy = await invoke('python_engine_health');
     if (healthy) {
@@ -323,15 +326,21 @@ async function runSetup() {
         console.debug('Python engine stop (preflight) ignored:', preflightErr);
       }
 
+      const defaultModelPath =
+        state.modelPath ||
+        (state.paths?.models != null
+          ? `${String(state.paths.models).replace(/\\/g, '/')}/gemma-1b-it-q4_0.gguf`
+          : null);
+
       const startResult = await invoke('start_python_engine', {
-        modelPath: null,
+        modelPath: defaultModelPath,
         pythonBinary: state.pythonBinary
       });
 
       const resolvedModelPath =
         typeof startResult === 'string' && startResult !== 'already running'
           ? startResult
-          : null;
+          : defaultModelPath;
       state.modelPath = resolvedModelPath;
 
       log(
@@ -495,13 +504,27 @@ async function handleChatSubmit(event) {
       elements.chatInput.focus();
       return;
     }
+    const assistantBubble = appendMessageBubble('assistant', '');
+    assistantBubble.classList.add('streaming');
+    state.streamingBubble = assistantBubble;
+    state.streamingBuffer = '';
     try {
-      const response = await invoke('python_chat', { message });
-      appendMessageBubble('assistant', response);
+      await invoke('python_chat_stream', { message });
+      if (state.streamingBubble) {
+        state.streamingBubble.textContent = state.streamingBuffer;
+        state.streamingBubble.classList.remove('streaming');
+      }
     } catch (error) {
       console.error(error);
-      appendMessageBubble('assistant', `Python sidecar error: ${error?.message ?? error}`);
+      if (state.streamingBubble) {
+        state.streamingBubble.textContent = `Python sidecar error: ${error?.message ?? error}`;
+        state.streamingBubble.classList.remove('streaming');
+      } else {
+        appendMessageBubble('assistant', `Python sidecar error: ${error?.message ?? error}`);
+      }
     } finally {
+      state.streamingBubble = null;
+      state.streamingBuffer = '';
       elements.sendBtn.disabled = false;
       elements.chatInput.focus();
     }
@@ -650,6 +673,7 @@ async function bootstrap() {
       elements.hardwareOutput.textContent = JSON.stringify(config.hardware, null, 2);
       state.hardware = config.hardware;
       state.paths = config.paths;
+      state.modelPath = config.model?.path ?? state.modelPath;
       if (state.backend === 'python') {
         state.pythonBinary = config.runtime?.python?.binary || state.pythonBinary;
         await ensurePythonBinary();
