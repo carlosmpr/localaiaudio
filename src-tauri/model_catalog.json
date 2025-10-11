@@ -1,0 +1,79 @@
+{
+  "models": [
+    {
+      "id": "phi3:mini",
+      "displayName": "Phi-3 Mini",
+      "provider": "ollama",
+      "sizeGb": 2.5,
+      "minRamGb": 6,
+      "minVramGb": 0,
+      "diskGb": 3,
+      "quality": "lightweight",
+      "description": "Small footprint model ideal for quick chats and low-spec machines.",
+      "licenseUrl": "https://www.microsoft.com/en-us/licensing/product-licensing/phi-3",
+      "tags": ["chat", "fast", "cpu"]
+    },
+    {
+      "id": "llama3.1:8b",
+      "displayName": "Llama 3.1 8B",
+      "provider": "ollama",
+      "sizeGb": 5.2,
+      "minRamGb": 12,
+      "minVramGb": 6,
+      "diskGb": 5,
+      "quality": "balanced",
+      "description": "Meta's balanced default model with strong general-purpose performance.",
+      "licenseUrl": "https://llama.meta.com/llama3/license",
+      "tags": ["chat", "balanced", "meta"]
+    },
+    {
+      "id": "deepseek-r1:7b",
+      "displayName": "DeepSeek R1 7B",
+      "provider": "ollama",
+      "sizeGb": 6.4,
+      "minRamGb": 16,
+      "minVramGb": 8,
+      "diskGb": 6,
+      "quality": "reasoning",
+      "description": "Reasoning-focused model suitable for complex tasks and coding assistance.",
+      "licenseUrl": "https://github.com/deepseek-ai/DeepSeek-R1",
+      "tags": ["reasoning", "analysis"]
+    },
+    {
+      "id": "gemma-1b",
+      "displayName": "Gemma 1.1 1B (GGUF)",
+      "provider": "python",
+      "sizeGb": 1.8,
+      "minRamGb": 4,
+      "minVramGb": 0,
+      "diskGb": 2,
+      "quality": "lightweight",
+      "description": "Google's Gemma 1B instruction-tuned GGUF build (Q4_0). Perfect for CPU demos.",
+      "licenseUrl": "https://ai.google.dev/gemma/terms",
+      "tags": ["gemma", "gguf", "cpu"],
+      "download": {
+        "url": "https://huggingface.co/QuantFactory/gemma-1.1-1b-it-GGUF/resolve/main/gemma-1.1-1b-it-Q4_0.gguf",
+        "checksumSha256": "d9c9f3ae2f955111ad50d926b4b9d386b720a246a3af7f4a45b5bc5c9f0d0d57",
+        "filename": "gemma-1b-it-q4_0.gguf"
+      }
+    },
+    {
+      "id": "mistral-7b",
+      "displayName": "Mistral 7B Instruct (GGUF)",
+      "provider": "python",
+      "sizeGb": 4.2,
+      "minRamGb": 10,
+      "minVramGb": 0,
+      "diskGb": 5,
+      "quality": "balanced",
+      "description": "Popular instruction-tuned Mistral 7B GGUF build suitable for CPU or GPU.",
+      "licenseUrl": "https://mistral.ai/licenses/",
+      "tags": ["mistral", "gguf", "balanced"],
+      "download": {
+        "url": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_0.gguf",
+        "checksumSha256": "8a934df2a2f244e7bb5d41dfbb1c1f8593f94a639a6a39aea66e19d77084b118",
+        "filename": "mistral-7b-instruct-q4_0.gguf"
+      }
+    }
+  ]
+}

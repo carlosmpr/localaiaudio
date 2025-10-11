@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+*.log
+*.tmp
+.DS_Store
+.idea/
+.vscode/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/target/**/*
+src-tauri/gen/**/*
+PrivateAI/
+python/__pycache__/
+python/.venv/
+python/runtime/
+*.pyc

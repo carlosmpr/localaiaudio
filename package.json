@@ -1,0 +1,22 @@
+{
+  "name": "privateai",
+  "version": "0.1.0",
+  "description": "CaribbeanTechS – Private AI Assistant - 100% Local AI",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node scripts/startServer.js",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:dev:ollama": "tauri dev --config src-tauri/tauri.ollama.conf.json",
+    "tauri:dev:python": "tauri dev --config src-tauri/tauri.python.conf.json",
+    "tauri:build:ollama": "tauri build --config src-tauri/tauri.ollama.conf.json",
+    "tauri:build:python": "tauri build --config src-tauri/tauri.python.conf.json",
+    "installer": "node scripts/runInstaller.js",
+    "demo:hardware-handler": "node scripts/demoHardwareHandler.js"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.5.0"
+  },
+  "license": "UNLICENSED"
+}
