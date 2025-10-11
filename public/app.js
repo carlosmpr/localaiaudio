@@ -1318,6 +1318,17 @@ function attachEventListeners() {
   elements.startSetupBtn.addEventListener('click', runSetup);
   elements.chatForm.addEventListener('submit', handleChatSubmit);
   elements.stopBtn?.addEventListener('click', stopStreaming);
+
+  // Add Enter key handler for chat input
+  elements.chatInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!elements.sendBtn.disabled && elements.chatInput.value.trim()) {
+        elements.chatForm.dispatchEvent(new Event('submit'));
+      }
+    }
+  });
+
   elements.newConversationBtn?.addEventListener('click', () => {
     startNewConversation({ focusInput: true, persistSummary: true });
   });
