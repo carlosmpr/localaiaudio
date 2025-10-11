@@ -16,3 +16,5 @@ python/.venv/
 python/runtime/
 *.pyc
 .Models
+Models/
+*.gguf
