@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod conversation;
 mod hardware;
 mod model_catalog;
 #[cfg(feature = "runtime-ollama")]
@@ -9,14 +10,15 @@ mod ollama;
 mod python_engine;
 mod storage;
 
+use conversation::{ChatRecord, ConversationMessage, ConversationSummary};
+use model_catalog::ModelCatalogEntry;
+#[cfg(feature = "runtime-python")]
+use python_engine::PythonEngineState;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 #[cfg(feature = "runtime-python")]
 use tauri::State;
-#[cfg(feature = "runtime-python")]
-use python_engine::PythonEngineState;
-use model_catalog::ModelCatalogEntry;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct HardwareInfo {
@@ -99,6 +101,20 @@ struct PythonRuntimeConfig {
     binary: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ChatRecordInput {
+    role: String,
+    content: String,
+    #[serde(default)]
+    timestamp: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ConversationHistoryInput {
+    role: String,
+    content: String,
+}
+
 #[tauri::command]
 async fn scan_hardware() -> Result<HardwareInfo, String> {
     hardware::scan_hardware().await
@@ -145,9 +161,17 @@ async fn pull_ollama_model(model: String, app_handle: tauri::AppHandle) -> Resul
 async fn send_chat_message(
     message: String,
     model: String,
+    history: Vec<ConversationHistoryInput>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    ollama::send_chat_message(message, model, app_handle).await
+    let history = history
+        .into_iter()
+        .map(|m| ConversationMessage {
+            role: m.role,
+            content: m.content,
+        })
+        .collect::<Vec<_>>();
+    ollama::send_chat_message(message, model, history, app_handle).await
 }
 
 #[tauri::command]
@@ -212,8 +236,16 @@ async fn python_engine_health(state: State<'_, PythonEngineState>) -> Result<boo
 async fn python_chat(
     state: State<'_, PythonEngineState>,
     message: String,
+    history: Vec<ConversationHistoryInput>,
 ) -> Result<String, String> {
-    python_engine::python_chat(state, message).await
+    let history = history
+        .into_iter()
+        .map(|m| ConversationMessage {
+            role: m.role,
+            content: m.content,
+        })
+        .collect::<Vec<_>>();
+    python_engine::python_chat(state, message, history).await
 }
 
 #[cfg(feature = "runtime-python")]
@@ -222,14 +254,66 @@ async fn python_chat_stream(
     state: State<'_, PythonEngineState>,
     app_handle: tauri::AppHandle,
     message: String,
+    history: Vec<ConversationHistoryInput>,
 ) -> Result<(), String> {
-    python_engine::python_chat_stream(state, app_handle, message).await
+    let history = history
+        .into_iter()
+        .map(|m| ConversationMessage {
+            role: m.role,
+            content: m.content,
+        })
+        .collect::<Vec<_>>();
+    python_engine::python_chat_stream(state, app_handle, message, history).await
 }
 
 #[cfg(feature = "runtime-python")]
 #[tauri::command]
 fn resolve_python_binary() -> String {
     python_engine::resolve_python_binary()
+}
+
+#[tauri::command]
+async fn ensure_directory(path: String) -> Result<(), String> {
+    let dir = PathBuf::from(path);
+    storage::ensure_directory(dir.as_path()).await
+}
+
+#[tauri::command]
+async fn append_chat_records(
+    session_id: String,
+    records: Vec<ChatRecordInput>,
+    chats_dir: Option<String>,
+) -> Result<(), String> {
+    let dir = conversation::resolve_chats_dir(chats_dir.as_deref())?;
+    conversation::append_records(
+        &dir,
+        &session_id,
+        &records
+            .into_iter()
+            .map(|r| ChatRecord {
+                role: r.role,
+                content: r.content,
+                timestamp: r.timestamp,
+            })
+            .collect::<Vec<_>>(),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn load_chat_history(
+    session_id: String,
+    chats_dir: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<ChatRecord>, String> {
+    let dir = conversation::resolve_chats_dir(chats_dir.as_deref())?;
+    conversation::load_records(&dir, &session_id, limit).await
+}
+
+#[tauri::command]
+async fn list_chat_sessions(chats_dir: Option<String>) -> Result<Vec<ConversationSummary>, String> {
+    let dir = conversation::resolve_chats_dir(chats_dir.as_deref())?;
+    conversation::list_conversations(&dir).await
 }
 
 fn main() {
@@ -259,6 +343,10 @@ fn main() {
         python_chat,
         python_chat_stream,
         resolve_python_binary,
+        ensure_directory,
+        append_chat_records,
+        load_chat_history,
+        list_chat_sessions,
     ]);
 
     #[cfg(all(feature = "runtime-ollama", not(feature = "runtime-python")))]
@@ -276,6 +364,10 @@ fn main() {
         list_ollama_models,
         pull_ollama_model,
         send_chat_message,
+        ensure_directory,
+        append_chat_records,
+        load_chat_history,
+        list_chat_sessions,
     ]);
 
     #[cfg(all(not(feature = "runtime-ollama"), feature = "runtime-python"))]
@@ -292,10 +384,16 @@ fn main() {
         python_chat,
         python_chat_stream,
         resolve_python_binary,
+        ensure_directory,
+        append_chat_records,
+        load_chat_history,
+        list_chat_sessions,
     ]);
 
     #[cfg(all(not(feature = "runtime-ollama"), not(feature = "runtime-python")))]
-    compile_error!("At least one runtime feature (runtime-ollama or runtime-python) must be enabled.");
+    compile_error!(
+        "At least one runtime feature (runtime-ollama or runtime-python) must be enabled."
+    );
 
     builder
         .run(tauri::generate_context!())

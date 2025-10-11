@@ -42,6 +42,13 @@
             <h3>Hardware snapshot</h3>
             <pre id="hardwareOutput">—</pre>
           </div>
+          <div class="chat-storage">
+            <div class="chat-storage-info">
+              <label for="chatDirDisplay">Chat history folder</label>
+              <p id="chatDirDisplay">Default: ~/PrivateAI/Chats</p>
+            </div>
+            <button type="button" id="chooseChatDirBtn" class="secondary">Choose Folder</button>
+          </div>
           <div class="model-selector">
             <label for="modelSelect">Recommended model</label>
             <select id="modelSelect">
@@ -58,20 +65,37 @@
       </section>
 
       <section id="chatView" class="panel hidden">
-        <div class="chat-header">
-          <h2>Private Chat</h2>
-          <div class="chat-meta">
-            <span id="activeModel">Model: —</span>
-            <button id="resetWizardBtn" class="secondary">Re-run setup</button>
+        <div class="chat-layout">
+          <aside class="conversation-sidebar">
+            <div class="conversation-header">
+              <h2>Conversations</h2>
+              <button type="button" id="newConversationBtn" class="secondary small">New chat</button>
+            </div>
+            <div class="conversation-scroll">
+              <div id="conversationList" class="conversation-list"></div>
+              <p id="conversationEmpty" class="conversation-empty">No conversations yet.</p>
+            </div>
+          </aside>
+          <div class="chat-pane">
+            <div class="chat-header">
+              <div class="chat-header-text">
+                <h2 id="conversationTitle">New chat</h2>
+                <p class="chat-subtitle">Speak with your local assistant.</p>
+              </div>
+              <div class="chat-meta">
+                <span id="activeModel">Model: —</span>
+                <button id="resetWizardBtn" class="secondary">Re-run setup</button>
+              </div>
+            </div>
+            <div class="chat-history" id="chatHistory"></div>
+            <form id="chatForm">
+              <textarea id="chatInput" placeholder="Ask anything..." rows="3"></textarea>
+              <div class="controls">
+                <button type="submit" id="sendBtn" disabled>Send</button>
+              </div>
+            </form>
           </div>
         </div>
-        <div class="chat-history" id="chatHistory"></div>
-        <form id="chatForm">
-          <textarea id="chatInput" placeholder="Ask anything..." rows="3"></textarea>
-          <div class="controls">
-            <button type="submit" id="sendBtn" disabled>Send</button>
-          </div>
-        </form>
       </section>
     </main>
 

@@ -1,8 +1,13 @@
 use crate::{AppConfig, StoragePaths};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 pub async fn get_base_dir() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+    Ok(home.join("PrivateAI"))
+}
+
+pub fn get_base_dir_blocking() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
     Ok(home.join("PrivateAI"))
 }
@@ -74,24 +79,14 @@ pub async fn load_config() -> Result<Option<AppConfig>, String> {
         .map_err(|e| format!("Failed to read config file: {}", e))?;
 
     // Parse JSON
-    let config: AppConfig = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse config: {}", e))?;
+    let config: AppConfig =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse config: {}", e))?;
 
     Ok(Some(config))
 }
 
-pub async fn ensure_model_file(
-    target_dir: &PathBuf,
-    filename: &str,
-) -> Result<PathBuf, String> {
-    let mut path = target_dir.clone();
-    path.push(filename);
-
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .map_err(|e| format!("Failed to create models directory: {}", e))?;
-    }
-
-    Ok(path)
+pub async fn ensure_directory(path: &Path) -> Result<(), String> {
+    fs::create_dir_all(path)
+        .await
+        .map_err(|e| format!("Failed to create directory {}: {e}", path.display()))
 }

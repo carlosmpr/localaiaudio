@@ -4,6 +4,8 @@ const DEFAULT_MODEL_OPTIONS = [
   { value: 'deepseek-r1:7b', label: 'DeepSeek R1 7B — reasoning' }
 ];
 
+const MAX_CONTEXT_MESSAGES = 12;
+
 const state = {
   setupRunning: false,
   currentStep: null,
@@ -17,7 +19,13 @@ const state = {
   availableRuntimes: [],
   pythonBinary: null,
   modelPath: null,
-  typingIndicator: null
+  typingIndicator: null,
+  conversation: [],
+  conversationCache: new Map(),
+  conversations: [],
+  activeConversationTitle: 'New chat',
+  conversationsLoaded: false,
+  conversationLoading: false
 };
 
 const elements = {
@@ -33,16 +41,23 @@ const elements = {
   logEntries: document.getElementById('logEntries'),
   steps: Array.from(document.querySelectorAll('.steps li')),
   modelSelect: document.getElementById('modelSelect'),
+  chatDirDisplay: document.getElementById('chatDirDisplay'),
+  chooseChatDirBtn: document.getElementById('chooseChatDirBtn'),
   chatHistory: document.getElementById('chatHistory'),
   chatForm: document.getElementById('chatForm'),
   chatInput: document.getElementById('chatInput'),
   sendBtn: document.getElementById('sendBtn'),
-  activeModel: document.getElementById('activeModel')
+  activeModel: document.getElementById('activeModel'),
+  newConversationBtn: document.getElementById('newConversationBtn'),
+  conversationList: document.getElementById('conversationList'),
+  conversationEmpty: document.getElementById('conversationEmpty'),
+  conversationTitle: document.getElementById('conversationTitle')
 };
 
 const TAURI = window.__TAURI__ || {};
 const invoke = TAURI.tauri?.invoke;
 const listen = TAURI.event?.listen;
+const openDialog = TAURI.dialog?.open;
 
 const stepsOrder = ['scan', 'storage', 'install', 'model', 'complete'];
 const STEP_LABELS = {
@@ -261,6 +276,288 @@ function clearTypingIndicator() {
   }
 }
 
+function generateSessionId() {
+  return `sess-${Date.now().toString(36)}`;
+}
+
+function updateChatDirDisplay() {
+  if (elements.chatDirDisplay) {
+    elements.chatDirDisplay.textContent = state.paths?.chats || 'Default: ~/PrivateAI/Chats';
+  }
+}
+
+async function appendChatRecords(records) {
+  if (!records.length || typeof invoke !== 'function' || !state.sessionId) return;
+  try {
+    await invoke('append_chat_records', {
+      sessionId: state.sessionId,
+      records,
+      chatsDir: state.paths?.chats || null
+    });
+  } catch (error) {
+    console.warn('Failed to persist chat records', error);
+  }
+}
+
+function syncConversationCache() {
+  if (!state.sessionId) return;
+  state.conversationCache.set(state.sessionId, [...state.conversation]);
+}
+
+function getContextMessages() {
+  if (!state.conversation.length) return [];
+  if (state.conversation.length <= MAX_CONTEXT_MESSAGES) {
+    return [...state.conversation];
+  }
+  return state.conversation.slice(-MAX_CONTEXT_MESSAGES);
+}
+
+function buildConversationSummary(sessionId, messages = []) {
+  const safeMessages = Array.isArray(messages) ? messages : [];
+  const firstUser = safeMessages.find(
+    (record) => record.role === 'user' && typeof record.content === 'string' && record.content.trim()
+  );
+  const fallbackTitle = firstUser?.content
+    ? firstUser.content.trim().split('\n')[0]
+    : 'New chat';
+  const title =
+    fallbackTitle.length > 80 ? `${fallbackTitle.slice(0, 80)}…` : fallbackTitle;
+  const lastMessage =
+    [...safeMessages]
+      .reverse()
+      .find((record) => typeof record.content === 'string' && record.content.trim()) || null;
+  const preview =
+    lastMessage?.content?.trim()
+      ? (lastMessage.content.trim().split('\n')[0] ?? '').slice(0, 120)
+      : null;
+  const createdAt = safeMessages[0]?.timestamp ?? null;
+  const updatedAt =
+    safeMessages[safeMessages.length - 1]?.timestamp ?? new Date().toISOString();
+  return {
+    sessionId,
+    title,
+    createdAt,
+    updatedAt,
+    messageCount: safeMessages.length,
+    preview
+  };
+}
+
+function setConversationTitle(title) {
+  state.activeConversationTitle = title || 'New chat';
+  if (elements.conversationTitle) {
+    elements.conversationTitle.textContent = state.activeConversationTitle;
+  }
+}
+
+function renderConversationHistory(messages = []) {
+  clearTypingIndicator();
+  elements.chatHistory.innerHTML = '';
+  messages.forEach((record) => {
+    if (!record || typeof record.content !== 'string') return;
+    const role = record.role === 'user' ? 'user' : 'assistant';
+    appendMessageBubble(role, record.content);
+  });
+  elements.chatHistory.scrollTop = elements.chatHistory.scrollHeight;
+}
+
+function renderConversationList() {
+  if (!elements.conversationList) return;
+  elements.conversationList.innerHTML = '';
+
+  if (!state.conversations.length) {
+    elements.conversationEmpty?.classList.add('visible');
+    return;
+  }
+
+  elements.conversationEmpty?.classList.remove('visible');
+  state.conversations.forEach((conv) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'conversation-item';
+    if (conv.sessionId === state.sessionId) {
+      item.classList.add('active');
+    }
+    const title = document.createElement('h3');
+    title.textContent = conv.title || 'New chat';
+    const preview = document.createElement('p');
+    preview.textContent =
+      conv.preview || `${conv.messageCount} message${conv.messageCount === 1 ? '' : 's'}`;
+    item.appendChild(title);
+    item.appendChild(preview);
+    item.addEventListener('click', () => {
+      void selectConversation(conv.sessionId);
+    });
+    elements.conversationList.appendChild(item);
+  });
+}
+
+function sortConversationsInPlace(list) {
+  list.sort((a, b) => {
+    if (a.updatedAt && b.updatedAt) {
+      if (a.updatedAt === b.updatedAt) {
+        return b.sessionId.localeCompare(a.sessionId);
+      }
+      return b.updatedAt.localeCompare(a.updatedAt);
+    }
+    if (a.updatedAt) return -1;
+    if (b.updatedAt) return 1;
+    return b.sessionId.localeCompare(a.sessionId);
+  });
+}
+
+function updateActiveConversationSummary() {
+  if (!state.sessionId) return;
+  const summary = buildConversationSummary(state.sessionId, state.conversation);
+  const index = state.conversations.findIndex((conv) => conv.sessionId === state.sessionId);
+  if (index === -1) {
+    state.conversations.unshift(summary);
+  } else {
+    state.conversations[index] = { ...state.conversations[index], ...summary };
+  }
+  sortConversationsInPlace(state.conversations);
+  setConversationTitle(summary.title);
+  renderConversationList();
+}
+
+async function refreshConversationList({ preserveSelection = false } = {}) {
+  if (state.conversationLoading) return;
+  state.conversationLoading = true;
+
+  try {
+    const summaries = [];
+    if (typeof invoke === 'function') {
+      try {
+        const result = await invoke('list_chat_sessions', {
+          chatsDir: state.paths?.chats || null
+        });
+        if (Array.isArray(result)) {
+          result.forEach((item) => {
+            summaries.push({
+              sessionId: item.session_id,
+              title: item.title,
+              createdAt: item.created_at ?? null,
+              updatedAt: item.updated_at ?? null,
+              messageCount: item.message_count ?? 0,
+              preview: item.preview ?? null
+            });
+          });
+        }
+      } catch (error) {
+        console.warn('Unable to list chat sessions', error);
+      }
+    }
+
+    if (
+      state.sessionId &&
+      state.conversation.length &&
+      !summaries.some((conv) => conv.sessionId === state.sessionId)
+    ) {
+      summaries.unshift(buildConversationSummary(state.sessionId, state.conversation));
+    }
+
+    sortConversationsInPlace(summaries);
+
+    state.conversations = summaries;
+    renderConversationList();
+    state.conversationsLoaded = true;
+
+    if (!preserveSelection) {
+      if (state.sessionId) {
+        const current = summaries.find((conv) => conv.sessionId === state.sessionId);
+        if (current) {
+          setConversationTitle(current.title);
+        } else if (summaries.length) {
+          await selectConversation(summaries[0].sessionId, { forceReload: false });
+        } else {
+          setConversationTitle('New chat');
+          renderConversationHistory([]);
+        }
+      } else if (summaries.length) {
+        await selectConversation(summaries[0].sessionId, { forceReload: false });
+      } else {
+        setConversationTitle('New chat');
+        renderConversationHistory([]);
+      }
+    }
+  } finally {
+    state.conversationLoading = false;
+  }
+}
+
+async function selectConversation(sessionId, { forceReload = false } = {}) {
+  if (!sessionId) return;
+
+  if (!forceReload && sessionId === state.sessionId && state.conversationsLoaded) {
+    renderConversationList();
+    return;
+  }
+
+  clearTypingIndicator();
+  state.sessionId = sessionId;
+
+  let messages = state.conversationCache.get(sessionId);
+  if (!Array.isArray(messages) || forceReload) {
+    if (typeof invoke === 'function') {
+      try {
+        const result = await invoke('load_chat_history', {
+          sessionId,
+          chatsDir: state.paths?.chats || null,
+          limit: null
+        });
+        if (Array.isArray(result)) {
+          messages = result.map((record) => ({
+            role: record.role || 'assistant',
+            content: record.content || '',
+            timestamp: record.timestamp ?? null
+          }));
+        } else {
+          messages = [];
+        }
+      } catch (error) {
+        console.warn('Unable to load chat history', error);
+        messages = [];
+      }
+    } else {
+      messages = [];
+    }
+  }
+
+  state.conversation = Array.isArray(messages)
+    ? messages.map((record) => ({
+        role: record.role === 'user' ? 'user' : 'assistant',
+        content: record.content || '',
+        timestamp: record.timestamp ?? null
+      }))
+    : [];
+
+  syncConversationCache();
+  updateActiveConversationSummary();
+  renderConversationHistory(state.conversation);
+  elements.chatInput?.focus();
+}
+
+function startNewConversation({ focusInput = true, persistSummary = true } = {}) {
+  clearTypingIndicator();
+  const newId = generateSessionId();
+  state.sessionId = newId;
+  state.conversation = [];
+  syncConversationCache();
+  if (persistSummary) {
+    updateActiveConversationSummary();
+  } else {
+    setConversationTitle('New chat');
+    renderConversationList();
+  }
+  renderConversationHistory([]);
+  if (elements.chatInput) {
+    elements.chatInput.value = '';
+    if (focusInput) {
+      elements.chatInput.focus();
+    }
+  }
+}
+
 async function loadAvailableRuntimes() {
   if (typeof invoke !== 'function') {
     if (!state.availableRuntimes.length) {
@@ -283,6 +580,7 @@ async function loadAvailableRuntimes() {
   }
 
   updateBackendAvailability();
+  updateChatDirDisplay();
 }
 
 async function runSetup() {
@@ -329,6 +627,7 @@ async function runSetup() {
     log('info', 'Preparing ~/PrivateAI directories.');
     const paths = await invoke('setup_storage');
     state.paths = paths;
+    updateChatDirDisplay();
     log('success', `Storage ready at ${paths.base_dir}`);
 
     if (state.backend === 'python') {
@@ -410,6 +709,7 @@ async function runSetup() {
       elements.activeModel.textContent = 'Model: gemma-1b (Python)';
       elements.sendBtn.disabled = false;
       toggleViews(true);
+      void refreshConversationList({ preserveSelection: false });
       log('success', 'Setup finished successfully.');
       return;
     }
@@ -484,6 +784,7 @@ async function runSetup() {
     elements.activeModel.textContent = `Model: ${selectedModel}`;
     elements.sendBtn.disabled = false;
     toggleViews(true);
+    void refreshConversationList({ preserveSelection: false });
     log('success', 'Setup finished successfully.');
   } catch (error) {
     console.error(error);
@@ -518,6 +819,19 @@ async function handleChatSubmit(event) {
   elements.chatInput.value = '';
   elements.sendBtn.disabled = true;
 
+  const timestamp = new Date().toISOString();
+  const userRecord = {
+    role: 'user',
+    content: message,
+    timestamp
+  };
+  state.conversation.push(userRecord);
+  syncConversationCache();
+  updateActiveConversationSummary();
+  await appendChatRecords([userRecord]);
+
+  const historySlice = getContextMessages();
+
   if (state.backend === 'python') {
     const ready = await ensurePythonEngineReady();
     if (!ready) {
@@ -530,7 +844,23 @@ async function handleChatSubmit(event) {
     state.streamingBubble = assistantBubble;
     state.streamingBuffer = '';
     try {
-      await invoke('python_chat_stream', { message });
+      await invoke('python_chat_stream', {
+        message,
+        history: historySlice
+      });
+      const assistantContent = state.streamingBuffer;
+      if (assistantContent) {
+        const assistantRecord = {
+          role: 'assistant',
+          content: assistantContent,
+          timestamp: new Date().toISOString()
+        };
+        state.conversation.push(assistantRecord);
+        syncConversationCache();
+        updateActiveConversationSummary();
+        await appendChatRecords([assistantRecord]);
+        void refreshConversationList({ preserveSelection: true });
+      }
     } catch (error) {
       console.error(error);
       if (state.streamingBubble) {
@@ -561,11 +891,25 @@ async function handleChatSubmit(event) {
   try {
     const response = await invoke('send_chat_message', {
       message,
-      model: state.activeModel
+      model: state.activeModel,
+      history: historySlice
     });
     if (state.streamingBubble) {
       clearTypingIndicator();
       state.streamingBubble.textContent = response || state.streamingBuffer;
+    }
+    const assistantContent = response || state.streamingBuffer;
+    if (assistantContent) {
+      const assistantRecord = {
+        role: 'assistant',
+        content: assistantContent,
+        timestamp: new Date().toISOString()
+      };
+      state.conversation.push(assistantRecord);
+      syncConversationCache();
+      updateActiveConversationSummary();
+      await appendChatRecords([assistantRecord]);
+      void refreshConversationList({ preserveSelection: true });
     }
   } catch (error) {
     console.error(error);
@@ -595,15 +939,13 @@ async function resetWizard() {
   }
 
   clearTypingIndicator();
-  state.sessionId = null;
+  startNewConversation({ focusInput: false, persistSummary: false });
   state.activeModel = null;
   state.hardware = null;
-  state.paths = null;
   state.currentStep = null;
   elements.steps.forEach((li) => li.classList.remove('active', 'completed'));
   elements.stepStatus.textContent = 'Press "Start Setup" to begin.';
   elements.logEntries.innerHTML = '';
-  elements.chatHistory.innerHTML = '';
   elements.activeModel.textContent = 'Model: —';
   elements.chatInput.value = '';
   elements.sendBtn.disabled = true;
@@ -615,11 +957,15 @@ async function resetWizard() {
   updateBackendAvailability();
   state.modelPath = null;
   state.typingIndicator = null;
+  updateChatDirDisplay();
 }
 
 function attachEventListeners() {
   elements.startSetupBtn.addEventListener('click', runSetup);
   elements.chatForm.addEventListener('submit', handleChatSubmit);
+  elements.newConversationBtn?.addEventListener('click', () => {
+    startNewConversation({ focusInput: true, persistSummary: true });
+  });
   elements.resetWizardBtn.addEventListener('click', () => {
     void resetWizard();
   });
@@ -633,6 +979,30 @@ function attachEventListeners() {
       elements.backendSelect.value = state.backend;
     }
     updateBackendUi();
+  });
+  elements.chooseChatDirBtn?.addEventListener('click', async () => {
+    if (typeof openDialog !== 'function') return;
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        defaultPath: state.paths?.chats || undefined
+      });
+      const folder = Array.isArray(selected) ? selected[0] : selected;
+      if (folder) {
+        state.paths = state.paths || {};
+        state.paths.chats = folder;
+        updateChatDirDisplay();
+        if (typeof invoke === 'function') {
+          await invoke('ensure_directory', { path: folder });
+        }
+        state.conversationCache = new Map();
+        await refreshConversationList({ preserveSelection: false });
+        startNewConversation({ focusInput: false, persistSummary: false });
+      }
+    } catch (error) {
+      console.warn('Chat directory selection cancelled or failed', error);
+    }
   });
 
   if (typeof listen === 'function') {
@@ -679,6 +1049,8 @@ function attachEventListeners() {
 async function bootstrap() {
   setDefaultModelOptions();
   attachEventListeners();
+  startNewConversation({ focusInput: false, persistSummary: false });
+  updateChatDirDisplay();
   await loadAvailableRuntimes();
 
   if (typeof invoke !== 'function') {
@@ -701,6 +1073,7 @@ async function bootstrap() {
       elements.hardwareOutput.textContent = JSON.stringify(config.hardware, null, 2);
       state.hardware = config.hardware;
       state.paths = config.paths;
+      updateChatDirDisplay();
       state.modelPath = config.model?.path ?? state.modelPath;
       if (state.backend === 'python') {
         state.pythonBinary = config.runtime?.python?.binary || state.pythonBinary;
@@ -746,6 +1119,8 @@ async function bootstrap() {
   } catch (error) {
     console.warn('No config found yet.', error);
   }
+
+  await refreshConversationList({ preserveSelection: false });
 }
 
 bootstrap();

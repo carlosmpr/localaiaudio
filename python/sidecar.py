@@ -59,13 +59,43 @@ class LlamaEngine:
         self._lock = threading.Lock()
         self.model_path = model_path
 
-    def chat(self, prompt: str, system: Optional[str] = None) -> str:
-        messages = [
+    def _prepare_messages(
+        self,
+        prompt: str,
+        system: Optional[str],
+        messages: Optional[list],
+    ) -> list:
+        if messages:
+            prepared = []
+            has_system = any(
+                isinstance(m, dict) and m.get("role") == "system" for m in messages
+            )
+            if not has_system:
+                prepared.append(
+                    {"role": "system", "content": system or DEFAULT_SYSTEM_PROMPT}
+                )
+            for msg in messages:
+                if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                    prepared.append({
+                        "role": msg.get("role"),
+                        "content": msg.get("content"),
+                    })
+            return prepared
+
+        return [
             {"role": "system", "content": system or DEFAULT_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ]
+
+    def chat(
+        self,
+        prompt: str,
+        system: Optional[str] = None,
+        messages: Optional[list] = None,
+    ) -> str:
+        prepared = self._prepare_messages(prompt, system, messages)
         with self._lock:
-            result = self._llm.create_chat_completion(messages=messages)
+            result = self._llm.create_chat_completion(messages=prepared)
         choice = result["choices"][0]
         message = choice.get("message")
 
@@ -88,14 +118,16 @@ class LlamaEngine:
 
         return content.strip()
 
-    def chat_stream(self, prompt: str, system: Optional[str] = None):
+    def chat_stream(
+        self,
+        prompt: str,
+        system: Optional[str] = None,
+        messages: Optional[list] = None,
+    ):
         """Stream chat completion tokens as they are generated."""
-        messages = [
-            {"role": "system", "content": system or DEFAULT_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ]
+        prepared = self._prepare_messages(prompt, system, messages)
         with self._lock:
-            stream = self._llm.create_chat_completion(messages=messages, stream=True)
+            stream = self._llm.create_chat_completion(messages=prepared, stream=True)
 
         for chunk in stream:
             if not chunk or "choices" not in chunk or not chunk["choices"]:
@@ -171,6 +203,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._write_json({"error": "Missing prompt"}, status=HTTPStatus.BAD_REQUEST)
             return
 
+        chat_messages = payload.get("messages") if isinstance(payload.get("messages"), list) else None
+
         # Handle streaming
         if path == "/chat/stream":
             try:
@@ -180,7 +214,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_header("Connection", "keep-alive")
                 self.end_headers()
 
-                for token in self.engine.chat_stream(prompt, system=system_prompt):
+                for token in self.engine.chat_stream(prompt, system=system_prompt, messages=chat_messages):
                     event_data = json.dumps({"token": token})
                     self.wfile.write(f"data: {event_data}\n\n".encode("utf-8"))
                     self.wfile.flush()
@@ -196,7 +230,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         # Handle non-streaming
         try:
-            reply = self.engine.chat(prompt, system=system_prompt)
+            reply = self.engine.chat(prompt, system=system_prompt, messages=chat_messages)
         except Exception as exc:  # pragma: no cover - runtime errors
             self._write_json({"error": f"Generation failed: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             return

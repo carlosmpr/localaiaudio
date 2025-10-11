@@ -262,6 +262,7 @@ Updates: optional auto-update for the application; manual model updates via the 
 - `src/ollama/ollamaBootstrap.js` simulates Ollama installation, service start, and model pulls while real integrations are pending.
 - `python/sidecar.py` hosts the Version 2 llama-cpp runtime; the Tauri shell can start/stop this sidecar when the Python backend is selected.
 - The Tauri shell (`src-tauri/src`) exposes commands for setup and chat, and `public/app.js` drives the first-run wizard with streaming responses directly from Ollama.
+- Chat history is stored as JSONL per session in the selected chats directory; the wizard’s “Chat history folder” control updates `paths.chats`, and both runtimes stream responses while persisting turns and maintaining a bounded in-memory context window.
 
 ## Flow Diagram
 

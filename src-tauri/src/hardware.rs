@@ -38,7 +38,11 @@ pub async fn scan_hardware() -> Result<HardwareInfo, String> {
         connected: check_network_connection().await,
     };
 
-    let os = format!("{} {}", System::name().unwrap_or_default(), System::os_version().unwrap_or_default());
+    let os = format!(
+        "{} {}",
+        System::name().unwrap_or_default(),
+        System::os_version().unwrap_or_default()
+    );
 
     Ok(HardwareInfo {
         os,
@@ -161,8 +165,10 @@ async fn check_network_connection() -> bool {
     // Simple network check with timeout
     match tokio::time::timeout(
         std::time::Duration::from_secs(2),
-        tokio::net::lookup_host("google.com:80")
-    ).await {
+        tokio::net::lookup_host("google.com:80"),
+    )
+    .await
+    {
         Ok(Ok(_)) => true,
         _ => false, // Timeout or error
     }

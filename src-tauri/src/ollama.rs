@@ -1,3 +1,4 @@
+use crate::conversation::ConversationMessage;
 use futures_util::StreamExt;
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -114,7 +115,11 @@ pub async fn install_ollama(app_handle: tauri::AppHandle) -> Result<String, Stri
                 .ok();
 
             Command::new("ln")
-                .args(["-sf", "/Applications/Ollama.app/Contents/Resources/ollama", "/usr/local/bin/ollama"])
+                .args([
+                    "-sf",
+                    "/Applications/Ollama.app/Contents/Resources/ollama",
+                    "/usr/local/bin/ollama",
+                ])
                 .output()
                 .ok();
 
@@ -156,7 +161,10 @@ pub async fn install_ollama(app_handle: tauri::AppHandle) -> Result<String, Stri
             )
             .ok();
 
-            Err("Please install Ollama manually from the opened webpage and restart the app".to_string())
+            Err(
+                "Please install Ollama manually from the opened webpage and restart the app"
+                    .to_string(),
+            )
         }
         _ => Err(format!("Unsupported operating system: {}", os)),
     }
@@ -226,14 +234,19 @@ pub async fn pull_model(model: String, app_handle: tauri::AppHandle) -> Result<S
 
     let response = client
         .post(format!("{}/api/pull", OLLAMA_API_BASE))
-        .json(&PullRequest { name: model.clone() })
+        .json(&PullRequest {
+            name: model.clone(),
+        })
         .send()
         .await
         .map_err(|e| format!("Failed to pull model: {}", e))?;
 
     if response.status().is_success() {
         app_handle
-            .emit_all("model-pull-status", format!("Model {} pulled successfully", model))
+            .emit_all(
+                "model-pull-status",
+                format!("Model {} pulled successfully", model),
+            )
             .ok();
         Ok(format!("Model {} is ready", model))
     } else {
@@ -248,6 +261,7 @@ pub async fn pull_model(model: String, app_handle: tauri::AppHandle) -> Result<S
 pub async fn send_chat_message(
     message: String,
     model: String,
+    history: Vec<ConversationMessage>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     app_handle
@@ -256,12 +270,24 @@ pub async fn send_chat_message(
 
     let client = reqwest::Client::new();
 
+    let mut messages: Vec<OllamaChatMessage> = history
+        .into_iter()
+        .map(|m| OllamaChatMessage {
+            role: m.role,
+            content: m.content,
+        })
+        .collect();
+
+    if messages.last().map(|m| m.role != "user").unwrap_or(true) {
+        messages.push(OllamaChatMessage {
+            role: "user".to_string(),
+            content: message.clone(),
+        });
+    }
+
     let request = OllamaChatRequest {
         model: model.clone(),
-        messages: vec![OllamaChatMessage {
-            role: "user".to_string(),
-            content: message,
-        }],
+        messages,
         stream: true,
     };
 

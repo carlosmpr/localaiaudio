@@ -1,4 +1,4 @@
-use crate::storage;
+use crate::{conversation::ConversationMessage, storage};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -214,7 +214,12 @@ pub async fn start_python_engine(
         .create(true)
         .append(true)
         .open(&log_path)
-        .map_err(|e| format!("Unable to open sidecar log file {}: {e}", log_path.display()))?;
+        .map_err(|e| {
+            format!(
+                "Unable to open sidecar log file {}: {e}",
+                log_path.display()
+            )
+        })?;
     let log_file_err = log_file
         .try_clone()
         .map_err(|e| format!("Unable to clone log file handle: {e}"))?;
@@ -262,10 +267,7 @@ pub async fn start_python_engine(
             Ok(false) => {}
             Err(err) => {
                 if attempt == 9 {
-                    return Err(format!(
-                        "{err} (see {} for details)",
-                        log_path.display()
-                    ));
+                    return Err(format!("{err} (see {} for details)", log_path.display()));
                 }
             }
         }
@@ -302,9 +304,31 @@ pub async fn python_engine_health(state: State<'_, PythonEngineState>) -> Result
     python_engine_health_internal(state.port).await
 }
 
+fn history_to_json(history: &[ConversationMessage], latest_user: &str) -> Vec<Value> {
+    let mut messages: Vec<Value> = history
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "role": m.role,
+                "content": m.content
+            })
+        })
+        .collect();
+
+    if history.last().map(|m| m.role != "user").unwrap_or(true) {
+        messages.push(serde_json::json!({
+            "role": "user",
+            "content": latest_user,
+        }));
+    }
+
+    messages
+}
+
 pub async fn python_chat(
     state: State<'_, PythonEngineState>,
     message: String,
+    history: Vec<ConversationMessage>,
 ) -> Result<String, String> {
     if message.trim().is_empty() {
         return Err("Message is empty.".into());
@@ -321,7 +345,10 @@ pub async fn python_chat(
     let client = Client::new();
     let response = client
         .post(format!("http://127.0.0.1:{}/chat", state.port))
-        .json(&serde_json::json!({ "prompt": message }))
+        .json(&serde_json::json!({
+            "prompt": message,
+            "messages": history_to_json(&history, &message),
+        }))
         .timeout(Duration::from_secs(120))
         .send()
         .await
@@ -351,6 +378,7 @@ pub async fn python_chat_stream(
     state: State<'_, PythonEngineState>,
     app_handle: AppHandle,
     message: String,
+    history: Vec<ConversationMessage>,
 ) -> Result<(), String> {
     if message.trim().is_empty() {
         return Err("Message is empty.".into());
@@ -367,7 +395,10 @@ pub async fn python_chat_stream(
     let client = Client::new();
     let response = client
         .post(format!("http://127.0.0.1:{}/chat/stream", state.port))
-        .json(&serde_json::json!({ "prompt": message }))
+        .json(&serde_json::json!({
+            "prompt": message,
+            "messages": history_to_json(&history, &message),
+        }))
         .send()
         .await
         .map_err(|e| format!("Failed to reach python sidecar: {e}"))?;
@@ -408,7 +439,9 @@ pub async fn python_chat_stream(
                             },
                         )
                         .ok();
-                    app_handle.emit_all("python-stream-token", token.to_string()).ok();
+                    app_handle
+                        .emit_all("python-stream-token", token.to_string())
+                        .ok();
                 } else if json.get("done").and_then(|d| d.as_bool()).unwrap_or(false) {
                     app_handle.emit_all("python-stream-done", "").ok();
                     return Ok(());

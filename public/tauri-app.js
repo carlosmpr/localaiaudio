@@ -1,6 +1,8 @@
 const { invoke } = window.__TAURI__.tauri;
 const { listen } = window.__TAURI__.event;
 
+const MAX_HISTORY = 12;
+
 const hardwareOutput = document.getElementById('hardwareOutput');
 const statusOutput = document.getElementById('statusOutput');
 const chatHistory = document.getElementById('chatHistory');
@@ -16,6 +18,8 @@ let currentModel = 'phi3:mini';
 let availableRuntimes = [];
 let currentRuntime = null;
 let currentTypingIndicator = null;
+let pythonHistory = [];
+let ollamaHistory = [];
 
 // Listen for status updates
 listen('install-status', (event) => {
@@ -100,6 +104,7 @@ async function initializeApp() {
 
 async function initializePythonRuntime() {
   try {
+    pythonHistory = [];
     // Scan hardware
     appendStatus('Scanning hardware...');
     const hardware = await invoke('scan_hardware');
@@ -134,6 +139,8 @@ async function initializePythonRuntime() {
 
 async function initializeOllamaRuntime() {
   try {
+    pythonHistory = [];
+    ollamaHistory = [];
     // Scan hardware
     appendStatus('Scanning hardware...');
     const hardware = await invoke('scan_hardware');
@@ -381,7 +388,17 @@ listen('python-stream-token', (event) => {
 });
 
 listen('python-stream-done', () => {
+  const bubble = currentStreamBubble;
   clearTypingIndicator();
+  if (bubble) {
+    const content = bubble.textContent || '';
+    if (content) {
+      pythonHistory.push({ role: 'assistant', content });
+      if (pythonHistory.length > MAX_HISTORY) {
+        pythonHistory = pythonHistory.slice(-MAX_HISTORY);
+      }
+    }
+  }
   currentStreamBubble = null;
   appendStatus('Response complete');
   isSending = false;
@@ -408,16 +425,32 @@ async function sendMessage(event) {
       attachTypingIndicator(currentStreamBubble);
 
       // Start streaming
-      await invoke('python_chat_stream', { message });
+      pythonHistory.push({ role: 'user', content: message });
+      if (pythonHistory.length > MAX_HISTORY) {
+        pythonHistory = pythonHistory.slice(-MAX_HISTORY);
+      }
+      await invoke('python_chat_stream', {
+        message,
+        history: pythonHistory
+      });
 
     } else if (currentRuntime === 'ollama') {
       currentModel = modelSelect.value;
       appendStatus(`Sending message to ${currentModel}...`);
+      ollamaHistory.push({ role: 'user', content: message });
+      if (ollamaHistory.length > MAX_HISTORY) {
+        ollamaHistory = ollamaHistory.slice(-MAX_HISTORY);
+      }
       const response = await invoke('send_chat_message', {
         message: message,
         model: currentModel,
+        history: ollamaHistory
       });
       appendMessageBubble({ role: 'assistant', content: response });
+      ollamaHistory.push({ role: 'assistant', content: response });
+      if (ollamaHistory.length > MAX_HISTORY) {
+        ollamaHistory = ollamaHistory.slice(-MAX_HISTORY);
+      }
       appendStatus('Response received');
       isSending = false;
       chatInput.focus();
@@ -427,6 +460,12 @@ async function sendMessage(event) {
       chatInput.focus();
     }
   } catch (error) {
+    if (currentRuntime === 'python' && pythonHistory.length) {
+      pythonHistory.pop();
+    }
+    if (currentRuntime === 'ollama' && ollamaHistory.length) {
+      ollamaHistory.pop();
+    }
     clearTypingIndicator();
     currentStreamBubble = null;
     appendMessageBubble({

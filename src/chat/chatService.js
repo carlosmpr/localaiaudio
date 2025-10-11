@@ -78,7 +78,94 @@ async function getSessionMessages(sessionId, baseDir) {
   }
 }
 
+function summariseConversation(sessionId, messages) {
+  const firstUser = messages.find(
+    (entry) => entry.role === 'user' && typeof entry.content === 'string' && entry.content.trim()
+  );
+  const fallbackTitle = firstUser?.content
+    ? firstUser.content.trim().split('\n')[0] ?? 'New chat'
+    : 'New chat';
+  const title = fallbackTitle.length > 80 ? `${fallbackTitle.slice(0, 80)}…` : fallbackTitle;
+  const lastEntry = [...messages].reverse().find(
+    (entry) => typeof entry.content === 'string' && entry.content.trim()
+  );
+  const preview = lastEntry?.content?.trim()
+    ? (lastEntry.content.trim().split('\n')[0] ?? '').slice(0, 120)
+    : null;
+  const createdAt = messages[0]?.timestamp ?? null;
+  const updatedAt = messages[messages.length - 1]?.timestamp ?? new Date().toISOString();
+
+  return {
+    sessionId,
+    title,
+    createdAt,
+    updatedAt,
+    messageCount: messages.length,
+    preview
+  };
+}
+
+async function listSessions(baseDir) {
+  const resolvedBase = resolveBaseDir(baseDir);
+  const directories = await createStorageLayout(resolvedBase);
+
+  let entries = [];
+  try {
+    entries = await fs.readdir(directories.chats, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+
+  const summaries = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (!entry.name.endsWith('.jsonl')) continue;
+    const sessionId = entry.name.slice(0, -'.jsonl'.length);
+    try {
+      const filePath = path.join(directories.chats, entry.name);
+      const content = await fs.readFile(filePath, 'utf8');
+      const messages = content
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      if (!messages.length) {
+        summaries.push({
+          sessionId,
+          title: 'New chat',
+          createdAt: null,
+          updatedAt: null,
+          messageCount: 0,
+          preview: null
+        });
+      } else {
+        summaries.push(summariseConversation(sessionId, messages));
+      }
+    } catch (error) {
+      console.warn(`Failed to summarise conversation ${sessionId}`, error);
+    }
+  }
+
+  summaries.sort((a, b) => {
+    if (a.updatedAt && b.updatedAt) {
+      if (a.updatedAt === b.updatedAt) {
+        return b.sessionId.localeCompare(a.sessionId);
+      }
+      return b.updatedAt.localeCompare(a.updatedAt);
+    }
+    if (a.updatedAt) return -1;
+    if (b.updatedAt) return 1;
+    return b.sessionId.localeCompare(a.sessionId);
+  });
+
+  return summaries;
+}
+
 module.exports = {
   sendMessage,
-  getSessionMessages
+  getSessionMessages,
+  listSessions,
+  createSessionId
 };
