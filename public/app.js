@@ -4,8 +4,6 @@ const DEFAULT_MODEL_OPTIONS = [
   { value: 'deepseek-r1:7b', label: 'DeepSeek R1 7B — reasoning' }
 ];
 
-const MAX_CONTEXT_MESSAGES = 12;
-
 const state = {
   setupRunning: false,
   currentStep: null,
@@ -48,6 +46,7 @@ const elements = {
   chatInput: document.getElementById('chatInput'),
   sendBtn: document.getElementById('sendBtn'),
   activeModel: document.getElementById('activeModel'),
+  changeChatDirBtn: document.getElementById('changeChatDirBtn'),
   newConversationBtn: document.getElementById('newConversationBtn'),
   conversationList: document.getElementById('conversationList'),
   conversationEmpty: document.getElementById('conversationEmpty'),
@@ -284,6 +283,10 @@ function updateChatDirDisplay() {
   if (elements.chatDirDisplay) {
     elements.chatDirDisplay.textContent = state.paths?.chats || 'Default: ~/PrivateAI/Chats';
   }
+  if (elements.changeChatDirBtn) {
+    const location = state.paths?.chats || 'Default: ~/PrivateAI/Chats';
+    elements.changeChatDirBtn.title = `Chats stored in: ${location}`;
+  }
 }
 
 async function appendChatRecords(records) {
@@ -299,17 +302,47 @@ async function appendChatRecords(records) {
   }
 }
 
+async function chooseChatDirectory({ focusChat = false } = {}) {
+  if (typeof openDialog !== 'function') return;
+  try {
+    const selected = await openDialog({
+      directory: true,
+      multiple: false,
+      defaultPath: state.paths?.chats || undefined
+    });
+    const folder = Array.isArray(selected) ? selected[0] : selected;
+    if (!folder) return;
+
+    state.paths = state.paths || {};
+    state.paths.chats = folder;
+    updateChatDirDisplay();
+
+    if (typeof invoke === 'function') {
+      await invoke('ensure_directory', { path: folder });
+    }
+
+    state.conversationCache = new Map();
+    await refreshConversationList({ preserveSelection: false });
+    if (!state.conversations.length) {
+      startNewConversation({ focusInput: focusChat, persistSummary: false });
+    } else if (focusChat && elements.chatInput) {
+      elements.chatInput.focus();
+    }
+  } catch (error) {
+    console.warn('Chat directory selection cancelled or failed', error);
+  }
+}
+
 function syncConversationCache() {
   if (!state.sessionId) return;
   state.conversationCache.set(state.sessionId, [...state.conversation]);
 }
 
 function getContextMessages() {
-  if (!state.conversation.length) return [];
-  if (state.conversation.length <= MAX_CONTEXT_MESSAGES) {
-    return [...state.conversation];
-  }
-  return state.conversation.slice(-MAX_CONTEXT_MESSAGES);
+  return state.conversation.map((record) => ({
+    role: record.role,
+    content: record.content
+  }));
 }
 
 function buildConversationSummary(sessionId, messages = []) {
@@ -846,7 +879,9 @@ async function handleChatSubmit(event) {
     try {
       await invoke('python_chat_stream', {
         message,
-        history: historySlice
+        history: historySlice,
+        sessionId: state.sessionId,
+        chatsDir: state.paths?.chats || null
       });
       const assistantContent = state.streamingBuffer;
       if (assistantContent) {
@@ -892,7 +927,9 @@ async function handleChatSubmit(event) {
     const response = await invoke('send_chat_message', {
       message,
       model: state.activeModel,
-      history: historySlice
+      history: historySlice,
+      sessionId: state.sessionId,
+      chatsDir: state.paths?.chats || null
     });
     if (state.streamingBubble) {
       clearTypingIndicator();
@@ -980,29 +1017,11 @@ function attachEventListeners() {
     }
     updateBackendUi();
   });
-  elements.chooseChatDirBtn?.addEventListener('click', async () => {
-    if (typeof openDialog !== 'function') return;
-    try {
-      const selected = await openDialog({
-        directory: true,
-        multiple: false,
-        defaultPath: state.paths?.chats || undefined
-      });
-      const folder = Array.isArray(selected) ? selected[0] : selected;
-      if (folder) {
-        state.paths = state.paths || {};
-        state.paths.chats = folder;
-        updateChatDirDisplay();
-        if (typeof invoke === 'function') {
-          await invoke('ensure_directory', { path: folder });
-        }
-        state.conversationCache = new Map();
-        await refreshConversationList({ preserveSelection: false });
-        startNewConversation({ focusInput: false, persistSummary: false });
-      }
-    } catch (error) {
-      console.warn('Chat directory selection cancelled or failed', error);
-    }
+  elements.chooseChatDirBtn?.addEventListener('click', () => {
+    void chooseChatDirectory({ focusChat: false });
+  });
+  elements.changeChatDirBtn?.addEventListener('click', () => {
+    void chooseChatDirectory({ focusChat: true });
   });
 
   if (typeof listen === 'function') {

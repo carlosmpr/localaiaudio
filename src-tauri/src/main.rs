@@ -20,6 +20,48 @@ use std::path::PathBuf;
 #[cfg(feature = "runtime-python")]
 use tauri::State;
 
+async fn resolve_history_messages(
+    history: Vec<ConversationHistoryInput>,
+    session_id: Option<String>,
+    chats_dir: Option<String>,
+    latest_user: &str,
+) -> Result<Vec<ConversationMessage>, String> {
+    if let Some(session_id) = session_id {
+        let dir = conversation::resolve_chats_dir(chats_dir.as_deref())?;
+        let mut records = conversation::load_records(&dir, &session_id, None).await?;
+        if let Some(last) = records.last() {
+            if last.role != "user" {
+                records.push(ChatRecord {
+                    role: "user".into(),
+                    content: latest_user.to_string(),
+                    timestamp: None,
+                });
+            }
+        } else {
+            records.push(ChatRecord {
+                role: "user".into(),
+                content: latest_user.to_string(),
+                timestamp: None,
+            });
+        }
+        Ok(records
+            .into_iter()
+            .map(|record| ConversationMessage {
+                role: record.role,
+                content: record.content,
+            })
+            .collect::<Vec<_>>())
+    } else {
+        Ok(history
+            .into_iter()
+            .map(|m| ConversationMessage {
+                role: m.role,
+                content: m.content,
+            })
+            .collect::<Vec<_>>())
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct HardwareInfo {
     os: String,
@@ -162,16 +204,13 @@ async fn send_chat_message(
     message: String,
     model: String,
     history: Vec<ConversationHistoryInput>,
+    session_id: Option<String>,
+    chats_dir: Option<String>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    let history = history
-        .into_iter()
-        .map(|m| ConversationMessage {
-            role: m.role,
-            content: m.content,
-        })
-        .collect::<Vec<_>>();
-    ollama::send_chat_message(message, model, history, app_handle).await
+    let history_messages =
+        resolve_history_messages(history, session_id, chats_dir, &message).await?;
+    ollama::send_chat_message(message, model, history_messages, app_handle).await
 }
 
 #[tauri::command]
@@ -237,15 +276,12 @@ async fn python_chat(
     state: State<'_, PythonEngineState>,
     message: String,
     history: Vec<ConversationHistoryInput>,
+    session_id: Option<String>,
+    chats_dir: Option<String>,
 ) -> Result<String, String> {
-    let history = history
-        .into_iter()
-        .map(|m| ConversationMessage {
-            role: m.role,
-            content: m.content,
-        })
-        .collect::<Vec<_>>();
-    python_engine::python_chat(state, message, history).await
+    let history_messages =
+        resolve_history_messages(history, session_id, chats_dir, &message).await?;
+    python_engine::python_chat(state, message, history_messages).await
 }
 
 #[cfg(feature = "runtime-python")]
@@ -255,15 +291,12 @@ async fn python_chat_stream(
     app_handle: tauri::AppHandle,
     message: String,
     history: Vec<ConversationHistoryInput>,
+    session_id: Option<String>,
+    chats_dir: Option<String>,
 ) -> Result<(), String> {
-    let history = history
-        .into_iter()
-        .map(|m| ConversationMessage {
-            role: m.role,
-            content: m.content,
-        })
-        .collect::<Vec<_>>();
-    python_engine::python_chat_stream(state, app_handle, message, history).await
+    let history_messages =
+        resolve_history_messages(history, session_id, chats_dir, &message).await?;
+    python_engine::python_chat_stream(state, app_handle, message, history_messages).await
 }
 
 #[cfg(feature = "runtime-python")]

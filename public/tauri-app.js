@@ -1,8 +1,6 @@
 const { invoke } = window.__TAURI__.tauri;
 const { listen } = window.__TAURI__.event;
 
-const MAX_HISTORY = 12;
-
 const hardwareOutput = document.getElementById('hardwareOutput');
 const statusOutput = document.getElementById('statusOutput');
 const chatHistory = document.getElementById('chatHistory');
@@ -394,9 +392,6 @@ listen('python-stream-done', () => {
     const content = bubble.textContent || '';
     if (content) {
       pythonHistory.push({ role: 'assistant', content });
-      if (pythonHistory.length > MAX_HISTORY) {
-        pythonHistory = pythonHistory.slice(-MAX_HISTORY);
-      }
     }
   }
   currentStreamBubble = null;
@@ -426,9 +421,6 @@ async function sendMessage(event) {
 
       // Start streaming
       pythonHistory.push({ role: 'user', content: message });
-      if (pythonHistory.length > MAX_HISTORY) {
-        pythonHistory = pythonHistory.slice(-MAX_HISTORY);
-      }
       await invoke('python_chat_stream', {
         message,
         history: pythonHistory
@@ -438,9 +430,6 @@ async function sendMessage(event) {
       currentModel = modelSelect.value;
       appendStatus(`Sending message to ${currentModel}...`);
       ollamaHistory.push({ role: 'user', content: message });
-      if (ollamaHistory.length > MAX_HISTORY) {
-        ollamaHistory = ollamaHistory.slice(-MAX_HISTORY);
-      }
       const response = await invoke('send_chat_message', {
         message: message,
         model: currentModel,
@@ -448,9 +437,6 @@ async function sendMessage(event) {
       });
       appendMessageBubble({ role: 'assistant', content: response });
       ollamaHistory.push({ role: 'assistant', content: response });
-      if (ollamaHistory.length > MAX_HISTORY) {
-        ollamaHistory = ollamaHistory.slice(-MAX_HISTORY);
-      }
       appendStatus('Response received');
       isSending = false;
       chatInput.focus();

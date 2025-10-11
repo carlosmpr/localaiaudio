@@ -342,6 +342,18 @@ body.chat-mode header {
   border-radius: 0.7rem;
 }
 
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.icon-button::before {
+  content: '\2699';
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
 .conversation-scroll {
   flex: 1;
   overflow-y: auto;
