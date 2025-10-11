@@ -408,14 +408,18 @@ pub async fn python_chat_stream(
                             },
                         )
                         .ok();
+                    app_handle.emit_all("python-stream-token", token.to_string()).ok();
                 } else if json.get("done").and_then(|d| d.as_bool()).unwrap_or(false) {
+                    app_handle.emit_all("python-stream-done", "").ok();
                     return Ok(());
                 } else if let Some(error) = json.get("error").and_then(|e| e.as_str()) {
+                    app_handle.emit_all("python-stream-done", "").ok();
                     return Err(format!("Stream error: {error}"));
                 }
             }
         }
     }
 
+    app_handle.emit_all("python-stream-done", "").ok();
     Ok(())
 }

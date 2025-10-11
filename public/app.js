@@ -16,7 +16,8 @@ const state = {
   backend: 'ollama',
   availableRuntimes: [],
   pythonBinary: null,
-  modelPath: null
+  modelPath: null,
+  typingIndicator: null
 };
 
 const elements = {
@@ -238,6 +239,26 @@ async function ensurePythonEngineReady() {
     showError(`Unable to start Python engine: ${error?.message ?? error}`);
   }
   return false;
+}
+
+function attachTypingIndicator(bubble) {
+  bubble.textContent = '';
+  bubble.classList.add('streaming');
+  const indicator = document.createElement('span');
+  indicator.className = 'typing-indicator';
+  indicator.innerHTML = '<span></span><span></span><span></span>';
+  bubble.appendChild(indicator);
+  state.typingIndicator = indicator;
+}
+
+function clearTypingIndicator() {
+  if (state.typingIndicator) {
+    state.typingIndicator.remove();
+    state.typingIndicator = null;
+  }
+  if (state.streamingBubble) {
+    state.streamingBubble.classList.remove('streaming');
+  }
 }
 
 async function loadAvailableRuntimes() {
@@ -505,34 +526,35 @@ async function handleChatSubmit(event) {
       return;
     }
     const assistantBubble = appendMessageBubble('assistant', '');
-    assistantBubble.classList.add('streaming');
+    attachTypingIndicator(assistantBubble);
     state.streamingBubble = assistantBubble;
     state.streamingBuffer = '';
     try {
       await invoke('python_chat_stream', { message });
-      if (state.streamingBubble) {
-        state.streamingBubble.textContent = state.streamingBuffer;
-        state.streamingBubble.classList.remove('streaming');
-      }
     } catch (error) {
       console.error(error);
       if (state.streamingBubble) {
+        clearTypingIndicator();
         state.streamingBubble.textContent = `Python sidecar error: ${error?.message ?? error}`;
-        state.streamingBubble.classList.remove('streaming');
       } else {
         appendMessageBubble('assistant', `Python sidecar error: ${error?.message ?? error}`);
       }
     } finally {
+      clearTypingIndicator();
+      if (state.streamingBubble) {
+        state.streamingBubble.textContent = state.streamingBuffer || state.streamingBubble.textContent;
+      }
       state.streamingBubble = null;
       state.streamingBuffer = '';
+      state.typingIndicator = null;
       elements.sendBtn.disabled = false;
       elements.chatInput.focus();
     }
     return;
   }
 
-  const assistantBubble = appendMessageBubble('assistant', '...');
-  assistantBubble.classList.add('streaming');
+  const assistantBubble = appendMessageBubble('assistant', '');
+  attachTypingIndicator(assistantBubble);
   state.streamingBubble = assistantBubble;
   state.streamingBuffer = '';
 
@@ -542,20 +564,21 @@ async function handleChatSubmit(event) {
       model: state.activeModel
     });
     if (state.streamingBubble) {
-      state.streamingBubble.textContent = response;
-      state.streamingBubble.classList.remove('streaming');
+      clearTypingIndicator();
+      state.streamingBubble.textContent = response || state.streamingBuffer;
     }
   } catch (error) {
     console.error(error);
     if (state.streamingBubble) {
+      clearTypingIndicator();
       state.streamingBubble.textContent = `Chat failed: ${error?.message ?? error}`;
-      state.streamingBubble.classList.remove('streaming');
     } else {
       appendMessageBubble('assistant', `Chat failed: ${error?.message ?? error}`);
     }
   } finally {
     state.streamingBubble = null;
     state.streamingBuffer = '';
+    state.typingIndicator = null;
     elements.sendBtn.disabled = false;
     elements.chatInput.focus();
   }
@@ -571,6 +594,7 @@ async function resetWizard() {
     }
   }
 
+  clearTypingIndicator();
   state.sessionId = null;
   state.activeModel = null;
   state.hardware = null;
@@ -590,6 +614,7 @@ async function resetWizard() {
   setDefaultModelOptions();
   updateBackendAvailability();
   state.modelPath = null;
+  state.typingIndicator = null;
 }
 
 function attachEventListeners() {
@@ -633,6 +658,9 @@ function attachEventListeners() {
         const { content } = event.payload;
         state.streamingBuffer = content || '';
         if (state.streamingBubble) {
+          if (state.typingIndicator && state.streamingBuffer.length) {
+            clearTypingIndicator();
+          }
           state.streamingBubble.textContent = state.streamingBuffer;
         }
       }

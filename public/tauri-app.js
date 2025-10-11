@@ -15,6 +15,7 @@ let isSending = false;
 let currentModel = 'phi3:mini';
 let availableRuntimes = [];
 let currentRuntime = null;
+let currentTypingIndicator = null;
 
 // Listen for status updates
 listen('install-status', (event) => {
@@ -41,6 +42,28 @@ function appendMessageBubble({ role, content }) {
   bubble.textContent = content;
   chatHistory.appendChild(bubble);
   chatHistory.scrollTop = chatHistory.scrollHeight;
+  return bubble;
+}
+
+function attachTypingIndicator(bubble) {
+  bubble.textContent = '';
+  bubble.classList.add('streaming');
+  const indicator = document.createElement('span');
+  indicator.className = 'typing-indicator';
+  indicator.innerHTML = '<span></span><span></span><span></span>';
+  bubble.appendChild(indicator);
+  currentTypingIndicator = indicator;
+}
+
+function clearTypingIndicator() {
+  if (currentTypingIndicator) {
+    const parent = currentTypingIndicator.parentElement;
+    if (parent) {
+      parent.classList.remove('streaming');
+    }
+    currentTypingIndicator.remove();
+    currentTypingIndicator = null;
+  }
 }
 
 async function initializeApp() {
@@ -349,12 +372,16 @@ async function pullModel() {
 let currentStreamBubble = null;
 listen('python-stream-token', (event) => {
   if (currentStreamBubble) {
+    if (currentTypingIndicator) {
+      clearTypingIndicator();
+    }
     currentStreamBubble.textContent += event.payload;
     chatHistory.scrollTop = chatHistory.scrollHeight;
   }
 });
 
 listen('python-stream-done', () => {
+  clearTypingIndicator();
   currentStreamBubble = null;
   appendStatus('Response complete');
   isSending = false;
@@ -377,10 +404,8 @@ async function sendMessage(event) {
       appendStatus('Sending message to Python AI...');
 
       // Create empty bubble for streaming response
-      currentStreamBubble = document.createElement('div');
-      currentStreamBubble.className = 'bubble assistant';
-      currentStreamBubble.textContent = '';
-      chatHistory.appendChild(currentStreamBubble);
+      currentStreamBubble = appendMessageBubble({ role: 'assistant', content: '' });
+      attachTypingIndicator(currentStreamBubble);
 
       // Start streaming
       await invoke('python_chat_stream', { message });
@@ -402,6 +427,7 @@ async function sendMessage(event) {
       chatInput.focus();
     }
   } catch (error) {
+    clearTypingIndicator();
     currentStreamBubble = null;
     appendMessageBubble({
       role: 'assistant',
