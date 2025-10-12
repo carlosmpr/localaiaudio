@@ -129,8 +129,10 @@ pub async fn chat_with_model(
 
     // Create context with 8192 tokens (Gemma 2 2B supports up to 8192)
     // This allows for long conversations with sliding window attention
+    // n_batch must be large enough to handle the prompt + history in one go
     let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(NonZeroU32::new(8192));
+        .with_n_ctx(NonZeroU32::new(8192))
+        .with_n_batch(8192);
 
     let backend_guard = state.backend.lock().await;
     let backend = backend_guard.as_ref()
@@ -189,8 +191,8 @@ pub async fn chat_with_model(
         return Err("Tokenization produced no tokens".into());
     }
 
-    // Process tokens
-    let mut batch = LlamaBatch::new(512, 1);
+    // Process tokens - use larger batch size to handle long conversations
+    let mut batch = LlamaBatch::new(8192, 1);
     let tokens_len = tokens.len();
     for (i, &token) in tokens.iter().enumerate() {
         // Set logits=true for the last token so we can generate from it
@@ -206,7 +208,7 @@ pub async fn chat_with_model(
 
     // Generate response
     let mut accumulated = String::new();
-    let max_tokens = 512;
+    let max_tokens = 4096;  // Maximum generation length - allows very long responses
     let mut n_past = tokens_len as i32;
 
     println!("[DEBUG] Starting generation with max_tokens={}, n_past={}", max_tokens, n_past);
