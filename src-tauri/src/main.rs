@@ -22,9 +22,14 @@ use embedded_runtime::EmbeddedRuntimeState;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use tauri::Manager;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::EnvFilter;
 #[cfg(any(feature = "runtime-python", feature = "runtime-embedded"))]
 use tauri::State;
+
+static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 
 fn history_inputs_to_messages(history: Vec<ConversationHistoryInput>) -> Vec<ConversationMessage> {
     history
@@ -462,7 +467,51 @@ async fn download_model(
     Ok(downloaded_path.to_string_lossy().to_string())
 }
 
+fn init_logging() -> Option<PathBuf> {
+    use std::fs;
+
+    let base_dir = storage::get_base_dir_blocking().ok()?;
+    let logs_dir = base_dir.join("Logs");
+    if let Err(err) = fs::create_dir_all(&logs_dir) {
+        eprintln!(
+            "Failed to create log directory {}: {}",
+            logs_dir.display(),
+            err
+        );
+        return None;
+    }
+
+    let log_file_name = "privateai.log";
+    let appender = tracing_appender::rolling::never(&logs_dir, log_file_name);
+    let (non_blocking, guard) = tracing_appender::non_blocking(appender);
+    let _ = LOG_GUARD.set(guard);
+
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    if tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .with_ansi(false)
+        .with_writer(non_blocking)
+        .try_init()
+        .is_err()
+    {
+        eprintln!(
+            "Failed to initialize file logger at {}",
+            logs_dir.join(log_file_name).display()
+        );
+        return None;
+    }
+
+    Some(logs_dir.join(log_file_name))
+}
+
 fn main() {
+    let log_path = init_logging();
+    if let Some(path) = &log_path {
+        tracing::info!("File logging initialized at {}", path.display());
+    }
+
     let builder = tauri::Builder::default();
 
     #[cfg(feature = "runtime-python")]

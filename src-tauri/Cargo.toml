@@ -19,6 +19,8 @@ reqwest = { version = "0.11", features = ["json", "stream"] }
 sysinfo = "0.30"
 dirs = "5.0"
 futures-util = "0.3"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-appender = "0.2"
 
 # Embedded runtime dependencies
 llama-cpp-2 = { version = "0.1", optional = true }
