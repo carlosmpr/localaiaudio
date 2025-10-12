@@ -509,7 +509,7 @@ fn init_logging() -> Option<PathBuf> {
 fn main() {
     let log_path = init_logging();
     if let Some(path) = &log_path {
-        tracing::info!("File logging initialized at {}", path.display());
+        println!("File logging initialized at {}", path.display());
     }
 
     let builder = tauri::Builder::default();

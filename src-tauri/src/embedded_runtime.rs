@@ -127,10 +127,10 @@ pub async fn chat_with_model(
     let model = model_guard.as_ref()
         .ok_or_else(|| "Model not loaded. Call load_model first.".to_string())?;
 
-    // Create context with 4096 tokens (model supports up to 8192)
-    // This allows for longer conversations before hitting context limits
+    // Create context with 8192 tokens (Gemma 2 2B supports up to 8192)
+    // This allows for long conversations with sliding window attention
     let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(NonZeroU32::new(4096));
+        .with_n_ctx(NonZeroU32::new(8192));
 
     let backend_guard = state.backend.lock().await;
     let backend = backend_guard.as_ref()
@@ -250,7 +250,7 @@ pub async fn chat_with_model(
         batch.clear();
 
         // Check if we're about to exceed context limit
-        if n_past >= 4096 {
+        if n_past >= 8192 {
             println!("[WARN] Reached context limit at {} tokens, stopping generation", n_past);
             accumulated.push_str("\n\n[Context limit reached. Please start a new conversation.]");
             break;
