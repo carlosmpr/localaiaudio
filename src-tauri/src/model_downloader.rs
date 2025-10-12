@@ -139,6 +139,24 @@ pub async fn download_default_model(
         return Ok(target_path);
     }
 
+    // Check if model exists in the user's home PrivateAI/Models directory
+    if let Some(home_dir) = dirs::home_dir() {
+        let home_models_dir = home_dir.join("PrivateAI").join("Models");
+        let home_model_path = home_models_dir.join(&model_info.filename);
+
+        if home_model_path.exists() {
+            app_handle
+                .emit_all(
+                    "model-download-status",
+                    format!("Found existing model in ~/PrivateAI/Models, using it..."),
+                )
+                .ok();
+
+            // Just return the existing path - no need to copy
+            return Ok(home_model_path);
+        }
+    }
+
     // Check if model is bundled with the app - try multiple paths
     let resource_paths = vec![
         format!("Models/{}", model_info.filename),
