@@ -20,10 +20,15 @@ sysinfo = "0.30"
 dirs = "5.0"
 futures-util = "0.3"
 
+# Embedded runtime dependencies
+llama-cpp-2 = { version = "0.1", optional = true }
+anyhow = "1.0"
+
 [features]
-default = ["runtime-python"]
+default = ["runtime-embedded"]
 runtime-ollama = []
 runtime-python = []
+runtime-embedded = ["llama-cpp-2"]
 custom-protocol = ["tauri/custom-protocol"]
 
 [target.'cfg(target_os = "macos")'.dependencies]

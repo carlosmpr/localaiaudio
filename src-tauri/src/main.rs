@@ -9,17 +9,21 @@ mod model_downloader;
 mod ollama;
 #[cfg(feature = "runtime-python")]
 mod python_engine;
+#[cfg(feature = "runtime-embedded")]
+mod embedded_runtime;
 mod storage;
 
 use conversation::{ChatRecord, ConversationMessage, ConversationSummary};
 use model_catalog::ModelCatalogEntry;
 #[cfg(feature = "runtime-python")]
 use python_engine::PythonEngineState;
+#[cfg(feature = "runtime-embedded")]
+use embedded_runtime::EmbeddedRuntimeState;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 use tauri::Manager;
-#[cfg(feature = "runtime-python")]
+#[cfg(any(feature = "runtime-python", feature = "runtime-embedded"))]
 use tauri::State;
 
 fn history_inputs_to_messages(history: Vec<ConversationHistoryInput>) -> Vec<ConversationMessage> {
@@ -276,6 +280,10 @@ fn get_available_runtimes() -> Vec<String> {
     {
         runtimes.push("python".to_string());
     }
+    #[cfg(feature = "runtime-embedded")]
+    {
+        runtimes.push("embedded".to_string());
+    }
     runtimes
 }
 
@@ -347,6 +355,50 @@ fn resolve_python_binary() -> String {
     python_engine::resolve_python_binary()
 }
 
+// Embedded runtime commands
+#[cfg(feature = "runtime-embedded")]
+#[tauri::command]
+async fn load_embedded_model(
+    model_path: String,
+    state: State<'_, EmbeddedRuntimeState>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    embedded_runtime::load_model(model_path, state, app_handle).await
+}
+
+#[cfg(feature = "runtime-embedded")]
+#[tauri::command]
+async fn unload_embedded_model(
+    state: State<'_, EmbeddedRuntimeState>,
+) -> Result<String, String> {
+    embedded_runtime::unload_model(state).await
+}
+
+#[cfg(feature = "runtime-embedded")]
+#[tauri::command]
+async fn embedded_chat_stream(
+    message: String,
+    history: Vec<ConversationHistoryInput>,
+    session_id: Option<String>,
+    chats_dir: Option<String>,
+    state: State<'_, EmbeddedRuntimeState>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let (history_messages, source) =
+        resolve_history_messages(history, session_id, chats_dir, &message).await?;
+    app_handle
+        .emit_all(
+            "chat-status",
+            format!(
+                "Using {} prior message(s) for context ({})",
+                history_messages.len(),
+                source
+            ),
+        )
+        .ok();
+    embedded_runtime::chat_with_model(message, history_messages, state, app_handle).await
+}
+
 #[tauri::command]
 async fn ensure_directory(path: String) -> Result<(), String> {
     let dir = PathBuf::from(path);
@@ -416,6 +468,9 @@ fn main() {
     #[cfg(feature = "runtime-python")]
     let builder = builder.manage(PythonEngineState::new(32121));
 
+    #[cfg(feature = "runtime-embedded")]
+    let builder = builder.manage(EmbeddedRuntimeState::new());
+
     #[cfg(all(feature = "runtime-ollama", feature = "runtime-python"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         scan_hardware,
@@ -467,7 +522,7 @@ fn main() {
         delete_chat_session,
     ]);
 
-    #[cfg(all(not(feature = "runtime-ollama"), feature = "runtime-python"))]
+    #[cfg(all(not(feature = "runtime-ollama"), feature = "runtime-python", not(feature = "runtime-embedded")))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         scan_hardware,
         setup_storage,
@@ -489,9 +544,28 @@ fn main() {
         download_model,
     ]);
 
-    #[cfg(all(not(feature = "runtime-ollama"), not(feature = "runtime-python")))]
+    #[cfg(all(not(feature = "runtime-ollama"), not(feature = "runtime-python"), feature = "runtime-embedded"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        scan_hardware,
+        setup_storage,
+        save_config,
+        load_config,
+        get_model_catalog,
+        get_available_runtimes,
+        load_embedded_model,
+        unload_embedded_model,
+        embedded_chat_stream,
+        ensure_directory,
+        append_chat_records,
+        load_chat_history,
+        list_chat_sessions,
+        delete_chat_session,
+        download_model,
+    ]);
+
+    #[cfg(all(not(feature = "runtime-ollama"), not(feature = "runtime-python"), not(feature = "runtime-embedded")))]
     compile_error!(
-        "At least one runtime feature (runtime-ollama or runtime-python) must be enabled."
+        "At least one runtime feature (runtime-ollama, runtime-python, or runtime-embedded) must be enabled."
     );
 
     builder

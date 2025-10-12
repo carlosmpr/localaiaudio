@@ -90,6 +90,10 @@ const STEP_LABELS = {
   python: {
     install: 'Start Python engine',
     model: 'Download model'
+  },
+  embedded: {
+    install: 'Load embedded model',
+    model: 'Download model'
   }
 };
 
@@ -182,7 +186,7 @@ function updateBackendUi() {
     }
   });
 
-  if (backend === 'python') {
+  if (backend === 'python' || backend === 'embedded') {
     elements.modelSelectorWrap?.classList.add('disabled');
     elements.modelSelect.disabled = true;
   } else {
@@ -947,6 +951,8 @@ async function runSetup() {
   elements.stepStatus.textContent =
     state.backend === 'python'
       ? 'Initializing Python sidecar setup...'
+      : state.backend === 'embedded'
+      ? 'Initializing embedded runtime setup...'
       : 'Initializing setup...';
 
   try {
@@ -1059,6 +1065,72 @@ async function runSetup() {
       elements.stepStatus.textContent = 'Setup complete. Opening chat experience.';
       state.activeModel = 'gemma-1b-python';
       elements.activeModel.textContent = 'Model: gemma-1b (Python)';
+      elements.sendBtn.disabled = false;
+      toggleViews(true);
+      void refreshConversationList({ preserveSelection: false });
+      log('success', 'Setup finished successfully.');
+      return;
+    }
+
+    if (state.backend === 'embedded') {
+      // Step 3: Download model if not present
+      setStep('model');
+      const modelsDir = String(state.paths.models).replace(/\\/g, '/');
+      const expectedModelPath = `${modelsDir}/gemma-3-1b-it-Q4_0.gguf`;
+
+      elements.stepStatus.textContent = 'Checking for AI model...';
+      log('info', 'Checking for Gemma 3 1B model...');
+
+      try {
+        const downloadedModelPath = await invoke('download_model', {
+          targetDir: modelsDir
+        });
+        state.modelPath = downloadedModelPath;
+        log('success', 'Model ready!');
+      } catch (error) {
+        console.error('Model download error:', error);
+        throw new Error(`Failed to download model: ${error?.message ?? error}`);
+      }
+
+      // Step 4: Load embedded model
+      setStep('install');
+      elements.stepStatus.textContent = 'Loading embedded llama.cpp runtime...';
+      log('info', 'Initializing embedded runtime with model.');
+
+      try {
+        const loadResult = await invoke('load_embedded_model', {
+          modelPath: state.modelPath
+        });
+        log('success', `Embedded model loaded: ${loadResult}`);
+      } catch (error) {
+        console.error('Model load error:', error);
+        throw new Error(`Failed to load embedded model: ${error?.message ?? error}`);
+      }
+
+      elements.stepStatus.textContent = 'Persisting configuration...';
+      log('info', 'Saving configuration file.');
+
+      await invoke('save_config', {
+        config: {
+          version: '0.1.0',
+          created_at: new Date().toISOString(),
+          hardware: state.hardware,
+          model: {
+            selected: 'gemma-1b-embedded',
+            status: 'available',
+            path: state.modelPath ?? null
+          },
+          paths: state.paths,
+          backend: 'embedded'
+        }
+      });
+
+      log('success', 'Configuration saved.');
+
+      setStep('complete');
+      elements.stepStatus.textContent = 'Setup complete. Opening chat experience.';
+      state.activeModel = 'gemma-1b-embedded';
+      elements.activeModel.textContent = 'Model: gemma-1b (Embedded)';
       elements.sendBtn.disabled = false;
       toggleViews(true);
       void refreshConversationList({ preserveSelection: false });
@@ -1288,24 +1360,34 @@ async function handleChatSubmit(event) {
 
   const historySlice = getContextMessages();
 
-  if (state.backend === 'python') {
-    const ready = await ensurePythonEngineReady();
-    if (!ready) {
-      elements.sendBtn.disabled = false;
-      elements.chatInput.focus();
-      return;
+  if (state.backend === 'python' || state.backend === 'embedded') {
+    if (state.backend === 'python') {
+      const ready = await ensurePythonEngineReady();
+      if (!ready) {
+        elements.sendBtn.disabled = false;
+        elements.chatInput.focus();
+        return;
+      }
     }
     const assistantBubble = appendMessageBubble('assistant', '');
     attachTypingIndicator(assistantBubble);
     state.streamingBubble = assistantBubble;
     state.streamingBuffer = '';
     try {
-      await invoke('python_chat_stream', {
+      const command = state.backend === 'embedded' ? 'embedded_chat_stream' : 'python_chat_stream';
+      console.log(`[DEBUG] Calling ${command} with:`, {
+        message,
+        historyLength: historySlice.length,
+        sessionId: state.sessionId,
+        backend: state.backend
+      });
+      await invoke(command, {
         message,
         history: historySlice,
         sessionId: state.sessionId,
         chatsDir: state.paths?.chats || null
       });
+      console.log(`[DEBUG] ${command} returned successfully`);
       const assistantContent = state.streamingBuffer;
       if (assistantContent) {
         const assistantRecord = {
@@ -1562,6 +1644,18 @@ function attachEventListeners() {
         elements.stepStatus.textContent = message;
       }
     });
+    listen('model-load-status', (event) => {
+      if (typeof event?.payload === 'string') {
+        log('info', event.payload);
+        if (state.backend === 'embedded') {
+          elements.stepStatus.textContent = event.payload;
+        }
+      }
+    });
+    listen('embedded-stream-done', (event) => {
+      // Embedded stream finished
+      console.debug('Embedded stream completed');
+    });
   }
 }
 
@@ -1627,6 +1721,20 @@ async function bootstrap() {
             'info',
             'Python backend configured but not running. Click "Start Setup" to relaunch the sidecar.'
           );
+        }
+      } else if (state.backend === 'embedded') {
+        try {
+          await invoke('load_embedded_model', {
+            modelPath: config.model?.path ?? state.modelPath
+          });
+          state.activeModel = config.model.selected || 'gemma-1b-embedded';
+          elements.activeModel.textContent = `Model: ${state.activeModel}`;
+          elements.sendBtn.disabled = false;
+          toggleViews(true);
+          log('info', 'Loaded embedded runtime configuration; chat is ready.');
+        } catch (error) {
+          console.warn('Failed to load embedded model on bootstrap.', error);
+          log('info', 'Embedded backend configured but model not loaded. Click "Start Setup" to load the model.');
         }
       } else {
         elements.activeModel.textContent = `Model: ${config.model.selected}`;

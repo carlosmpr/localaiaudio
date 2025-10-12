@@ -24,9 +24,10 @@
           <select id="backendSelect">
             <option value="ollama">Ollama (default)</option>
             <option value="python">Python llama.cpp sidecar</option>
+            <option value="embedded">Embedded llama.cpp (no dependencies)</option>
           </select>
           <p class="hint">
-            Switch to the Python sidecar to run GGUF models via llama-cpp without Ollama.
+            Embedded runtime runs llama.cpp directly with zero external dependencies.
           </p>
         </div>
         <ol class="steps">
