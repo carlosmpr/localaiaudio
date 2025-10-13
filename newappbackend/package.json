@@ -1,0 +1,13 @@
+{
+  "name": "newappbackend",
+  "version": "0.1.0",
+  "description": "Minimal local LLM server using node-llama-cpp",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "node-llama-cpp": "^3.14.0"
+  }
+}
