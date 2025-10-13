@@ -34,13 +34,11 @@
   },
   "build": {
     "appId": "com.privateai.desktop",
+    "asar": false,
     "directories": {
       "buildResources": "resources",
       "output": "dist"
     },
-    "asarUnpack": [
-      "node_modules/node-llama-cpp/**"
-    ],
     "files": [
       "build/**/*",
       "node_modules/**/*",

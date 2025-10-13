@@ -2,7 +2,7 @@ const http = require('node:http');
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
-const { URL } = require('node:url');
+const { URL, pathToFileURL } = require('node:url');
 const storage = require('./storage.js');
 const conversations = require('./conversationStore.js');
 
@@ -43,7 +43,23 @@ let llamaModulePromise = null;
 
 function loadLlamaModule() {
   if (!llamaModulePromise) {
-    llamaModulePromise = import('node-llama-cpp');
+    llamaModulePromise = import('node-llama-cpp').catch((error) => {
+      if (error?.code !== 'ERR_MODULE_NOT_FOUND') {
+        throw error;
+      }
+
+      let modulePath;
+      try {
+        modulePath = require.resolve('node-llama-cpp');
+      } catch (resolveError) {
+        const resolutionError = new Error('Unable to locate node-llama-cpp module');
+        resolutionError.cause = resolveError;
+        throw resolutionError;
+      }
+
+      const moduleUrl = pathToFileURL(modulePath).href;
+      return import(moduleUrl);
+    });
   }
   return llamaModulePromise;
 }
