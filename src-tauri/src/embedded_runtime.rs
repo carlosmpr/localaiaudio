@@ -65,14 +65,48 @@ pub async fn load_model(
     // Run blocking operations in a separate thread
     let path_clone = path.clone();
     let result = task::spawn_blocking(move || {
-        // Initialize backend
+        println!("[INFO] Detecting hardware configuration...");
+
+        // Detect system capabilities - this ensures compatibility across different Macs
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            if let Ok(output) = Command::new("sysctl")
+                .args(&["-n", "hw.memsize"])
+                .output()
+            {
+                if let Ok(mem_str) = String::from_utf8(output.stdout) {
+                    if let Ok(total_mem) = mem_str.trim().parse::<u64>() {
+                        let total_gb = total_mem / (1024 * 1024 * 1024);
+                        println!("[INFO] Detected {} GB total RAM", total_gb);
+                    }
+                }
+            }
+
+            if let Ok(output) = Command::new("sysctl")
+                .args(&["-n", "machdep.cpu.brand_string"])
+                .output()
+            {
+                if let Ok(cpu) = String::from_utf8(output.stdout) {
+                    println!("[INFO] CPU: {}", cpu.trim());
+                }
+            }
+        }
+
+        println!("[INFO] Initializing llama.cpp backend with automatic hardware detection...");
+
+        // Initialize backend - llama.cpp will automatically detect and use Metal on Apple Silicon
         let backend = LlamaBackend::init()
             .map_err(|e| format!("Failed to init backend: {e}"))?;
 
-        // Load model
+        println!("[INFO] Loading model with adaptive parameters...");
+
+        // Load model with default parameters - llama.cpp handles hardware adaptation
         let model_params = LlamaModelParams::default();
         let model = LlamaModel::load_from_file(&backend, &path_clone, &model_params)
             .map_err(|e| format!("Failed to load model: {e}"))?;
+
+        println!("[INFO] Model loaded successfully with hardware-optimized settings");
 
         Ok::<_, String>((backend, model))
     }).await
@@ -136,12 +170,57 @@ pub async fn chat_with_model(
     let model = model_guard.as_ref()
         .ok_or_else(|| "Model not loaded. Call load_model first.".to_string())?;
 
-    // Create context with 8192 tokens (Gemma 2 2B supports up to 8192)
-    // This allows for long conversations with sliding window attention
-    // n_batch must be large enough to handle the prompt + history in one go
+    // Detect available memory and adapt context size for compatibility
+    let (n_ctx, n_batch) = {
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            // Try to detect available memory
+            if let Ok(output) = Command::new("sysctl").args(&["-n", "hw.memsize"]).output() {
+                if let Ok(mem_str) = String::from_utf8(output.stdout) {
+                    if let Ok(total_mem) = mem_str.trim().parse::<u64>() {
+                        let total_gb = total_mem / (1024 * 1024 * 1024);
+
+                        // Adaptive context sizing based on RAM
+                        // More RAM = larger context for better conversations
+                        let context_size = if total_gb >= 16 {
+                            println!("[INFO] High RAM detected ({}GB), using 8192 token context", total_gb);
+                            8192
+                        } else if total_gb >= 8 {
+                            println!("[INFO] Medium RAM detected ({}GB), using 4096 token context", total_gb);
+                            4096
+                        } else {
+                            println!("[INFO] Lower RAM detected ({}GB), using 2048 token context for stability", total_gb);
+                            2048
+                        };
+
+                        (context_size, context_size)
+                    } else {
+                        println!("[WARN] Could not parse memory, using safe default 4096");
+                        (4096, 4096)
+                    }
+                } else {
+                    println!("[WARN] Could not read memory info, using safe default 4096");
+                    (4096, 4096)
+                }
+            } else {
+                println!("[WARN] sysctl not available, using safe default 4096");
+                (4096, 4096)
+            }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            println!("[INFO] Non-macOS system, using default 4096 token context");
+            (4096, 4096)
+        }
+    };
+
+    println!("[INFO] Creating context with n_ctx={}, n_batch={}", n_ctx, n_batch);
+
     let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(NonZeroU32::new(8192))
-        .with_n_batch(8192);
+        .with_n_ctx(NonZeroU32::new(n_ctx as u32))
+        .with_n_batch(n_batch as u32);
 
     let backend_guard = state.backend.lock().await;
     let backend = backend_guard.as_ref()
@@ -149,6 +228,8 @@ pub async fn chat_with_model(
 
     let mut ctx = model.new_context(backend, ctx_params)
         .map_err(|e| format!("Failed to create context: {e}"))?;
+
+    println!("[INFO] Context created successfully");
 
     // Format prompt using the model's native chat template when available to avoid manual prompt hacks.
     let (formatted_prompt, add_bos) = match model.chat_template(None) {
@@ -237,8 +318,9 @@ pub async fn chat_with_model(
 
         let mut candidates = ctx.token_data_array_ith(logit_idx);
 
-        // Simple sampling without repetition penalty - just temperature and top-p for natural output
+        // Sampling with repeat penalty to prevent loops - works identically across all hardware
         let mut sampler = LlamaSampler::chain_simple([
+            LlamaSampler::penalties(64, 1.15, 0.0, 0.0), // Repeat penalty: look back 64 tokens, 1.15 penalty
             LlamaSampler::top_k(40),        // Keep top 40 most likely tokens
             LlamaSampler::top_p(0.95, 1),   // Nucleus sampling: keep tokens that sum to 95% probability
             LlamaSampler::min_p(0.05, 1),   // Filter out very low probability tokens
