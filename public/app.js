@@ -320,12 +320,24 @@ function hideStopButton() {
   }
 }
 
-function stopStreaming() {
+async function stopStreaming() {
   state.shouldStopStreaming = true;
   clearTypingIndicator();
 
+  // Cancel backend generation if embedded runtime is active
+  if (state.backend === 'embedded' && typeof invoke === 'function') {
+    try {
+      await invoke('cancel_embedded_generation');
+      console.log('[DEBUG] Sent cancellation request to embedded runtime');
+    } catch (error) {
+      console.warn('Failed to cancel embedded generation:', error);
+    }
+  }
+
+  // Update the bubble to show it was stopped (preserve markdown rendering)
   if (state.streamingBubble && state.streamingBuffer) {
-    state.streamingBubble.textContent = state.streamingBuffer + ' [Stopped]';
+    const stoppedContent = state.streamingBuffer + '\n\n*[Stopped by user]*';
+    updateStreamingMarkdown(state.streamingBubble, stoppedContent);
   }
 
   hideStopButton();
@@ -336,7 +348,7 @@ function stopStreaming() {
   if (state.streamingBuffer) {
     const assistantRecord = {
       role: 'assistant',
-      content: state.streamingBuffer + ' [Stopped by user]',
+      content: state.streamingBuffer,  // Save without the "stopped" message
       timestamp: new Date().toISOString()
     };
     state.conversation.push(assistantRecord);

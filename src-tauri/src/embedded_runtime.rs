@@ -13,6 +13,7 @@ use llama_cpp_2::{
     model::{
         params::LlamaModelParams, AddBos, LlamaChatMessage, LlamaModel, Special,
     },
+    sampling::LlamaSampler,
 };
 
 #[derive(Default)]
@@ -22,6 +23,7 @@ pub struct EmbeddedRuntimeState {
     #[cfg(feature = "runtime-embedded")]
     backend: Arc<Mutex<Option<LlamaBackend>>>,
     model_path: Arc<Mutex<Option<PathBuf>>>,
+    pub cancel_generation: Arc<Mutex<bool>>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -37,6 +39,7 @@ impl EmbeddedRuntimeState {
             #[cfg(feature = "runtime-embedded")]
             backend: Arc::new(Mutex::new(None)),
             model_path: Arc::new(Mutex::new(None)),
+            cancel_generation: Arc::new(Mutex::new(false)),
         }
     }
 }
@@ -122,6 +125,12 @@ pub async fn chat_with_model(
 
     println!("[DEBUG] chat_with_model called with prompt: {}", &prompt[..prompt.len().min(50)]);
     println!("[DEBUG] History length: {}", history.len());
+
+    // Reset cancellation flag at the start of generation
+    {
+        let mut cancel_flag = state.cancel_generation.lock().await;
+        *cancel_flag = false;
+    }
 
     let model_guard = state.model.lock().await;
     let model = model_guard.as_ref()
@@ -214,12 +223,32 @@ pub async fn chat_with_model(
     println!("[DEBUG] Starting generation with max_tokens={}, n_past={}", max_tokens, n_past);
 
     for i in 0..max_tokens {
+        // Check if generation was cancelled (non-blocking check)
+        if let Ok(cancel_flag) = state.cancel_generation.try_lock() {
+            if *cancel_flag {
+                println!("[DEBUG] Generation cancelled by user at iteration {}", i);
+                break;
+            }
+        }
+
         // For the first iteration, logits are at the last position of the initial batch
         // For subsequent iterations, logits are at position 0 (single token batch)
         let logit_idx = if i == 0 { batch.n_tokens() - 1 } else { 0 };
 
         let mut candidates = ctx.token_data_array_ith(logit_idx);
-        let new_token = candidates.sample_token_greedy();
+
+        // Simple sampling without repetition penalty - just temperature and top-p for natural output
+        let mut sampler = LlamaSampler::chain_simple([
+            LlamaSampler::top_k(40),        // Keep top 40 most likely tokens
+            LlamaSampler::top_p(0.95, 1),   // Nucleus sampling: keep tokens that sum to 95% probability
+            LlamaSampler::min_p(0.05, 1),   // Filter out very low probability tokens
+            LlamaSampler::temp(0.8),        // Temperature: balance between creative and coherent
+            LlamaSampler::dist(42),         // Sample from distribution with fixed seed for consistency
+        ]);
+
+        candidates.apply_sampler(&mut sampler);
+        let new_token = candidates.selected_token()
+            .ok_or_else(|| "Sampling failed to select a token".to_string())?;
 
         if new_token == model.token_eos() {
             println!("[DEBUG] Reached EOS token at iteration {}", i);
@@ -241,12 +270,15 @@ pub async fn chat_with_model(
             println!("[DEBUG] Token {}: '{}', accumulated length: {}", i, token_str, accumulated.len());
         }
 
-        // Emit streaming update
-        app_handle
-            .emit_all("chat-stream", StreamPayload {
-                content: accumulated.clone(),
-            })
-            .ok();
+        // Emit streaming update with controlled frequency to prevent overwhelming the UI
+        // Only emit every 5 tokens or on last token to balance smoothness and performance
+        if i % 5 == 0 || i == max_tokens - 1 {
+            app_handle
+                .emit_all("chat-stream", StreamPayload {
+                    content: accumulated.clone(),
+                })
+                .ok();
+        }
 
         // Add token to batch for next iteration
         batch.clear();

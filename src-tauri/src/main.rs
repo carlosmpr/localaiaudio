@@ -404,6 +404,16 @@ async fn embedded_chat_stream(
     embedded_runtime::chat_with_model(message, history_messages, state, app_handle).await
 }
 
+#[cfg(feature = "runtime-embedded")]
+#[tauri::command]
+async fn cancel_embedded_generation(
+    state: State<'_, EmbeddedRuntimeState>,
+) -> Result<(), String> {
+    let mut cancel_flag = state.cancel_generation.lock().await;
+    *cancel_flag = true;
+    Ok(())
+}
+
 #[tauri::command]
 async fn ensure_directory(path: String) -> Result<(), String> {
     let dir = PathBuf::from(path);
@@ -604,6 +614,7 @@ fn main() {
         load_embedded_model,
         unload_embedded_model,
         embedded_chat_stream,
+        cancel_embedded_generation,
         ensure_directory,
         append_chat_records,
         load_chat_history,
