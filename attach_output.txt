@@ -1,0 +1,2 @@
+/dev/disk7          	GUID_partition_scheme          	
+/dev/disk7s1        	Apple_HFS                      	/Volumes/PrivateAI Installer 1
