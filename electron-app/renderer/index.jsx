@@ -10,23 +10,32 @@ if (typeof globalThis !== 'undefined') {
   }
 }
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import MarkdownMessage from './components/MarkdownMessage';
 
 const API_HOST = window.env?.HOST ?? '127.0.0.1';
 const API_PORT = window.env?.PORT ?? '3333';
 const API_BASE = `http://${API_HOST}:${API_PORT}`;
 
+function formatTimestamp(value) {
+  if (!value) return null;
+  try {
+    return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return null;
+  }
+}
+
 function App() {
   const [status, setStatus] = useState('Checking runtime…');
-  const [loading, setLoading] = useState(false);
-  const [response, setResponse] = useState('');
   const [conversations, setConversations] = useState([]);
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [prompt, setPrompt] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const messagesViewportRef = useRef(null);
 
   async function refreshStatus() {
     try {
@@ -118,6 +127,7 @@ function App() {
       const decoder = new TextDecoder();
       let buffer = '';
       let tempAssistant = null;
+      let tempAssistantLocalId = null;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -147,21 +157,67 @@ function App() {
               break;
             case 'token':
               if (!tempAssistant) {
+                tempAssistantLocalId = `assistant-${Date.now()}`;
                 tempAssistant = {
-                  id: `assistant-${Date.now()}`,
+                  id: tempAssistantLocalId,
+                  localId: tempAssistantLocalId,
                   role: 'assistant',
-                  content: '',
-                  timestamp: new Date().toISOString()
+                  content: eventPayload.chunk ?? '',
+                  timestamp: new Date().toISOString(),
+                  streaming: true
                 };
                 setMessages((prev) => [...prev, tempAssistant]);
+              } else {
+                tempAssistant = {
+                  ...tempAssistant,
+                  content: `${tempAssistant.content ?? ''}${eventPayload.chunk ?? ''}`,
+                  streaming: true
+                };
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.localId === tempAssistant.localId ? tempAssistant : msg
+                  )
+                );
               }
-              tempAssistant.content += eventPayload.chunk;
-              setMessages((prev) => prev.map((msg) => (msg.id === tempAssistant.id ? tempAssistant : msg)));
               break;
             case 'done':
-              tempAssistant = eventPayload.message;
-              setMessages((prev) => prev.map((msg) => (msg.id === tempAssistant.id ? tempAssistant : msg)));
+              if (eventPayload.message) {
+                const finalMessage = {
+                  ...eventPayload.message,
+                  localId: tempAssistant?.localId ?? tempAssistantLocalId ?? eventPayload.message.id,
+                  streaming: false
+                };
+                tempAssistant = finalMessage;
+                setMessages((prev) => {
+                  const hasPlaceholder = prev.some(
+                    (msg) =>
+                      msg.localId === finalMessage.localId || msg.id === finalMessage.id
+                  );
+                  if (hasPlaceholder) {
+                    return prev.map((msg) =>
+                      msg.localId === finalMessage.localId || msg.id === finalMessage.id
+                        ? finalMessage
+                        : msg
+                    );
+                  }
+                  return [...prev, finalMessage];
+                });
+              }
               loadConversations();
+              break;
+            case 'aborted':
+              if (tempAssistant) {
+                const abortedMessage = {
+                  ...tempAssistant,
+                  streaming: false
+                };
+                tempAssistant = abortedMessage;
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.localId === abortedMessage.localId ? abortedMessage : msg
+                  )
+                );
+              }
               break;
             case 'error':
               console.error(eventPayload.message);
@@ -189,68 +245,118 @@ function App() {
     }
   }, [sessionId]);
 
+  useEffect(() => {
+    const viewport = messagesViewportRef.current;
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
+    }
+  }, [messages]);
+
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', color: '#e5e7eb' }}>
-      <aside style={{ width: 280, borderRight: '1px solid rgba(148,163,184,0.2)', padding: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Conversations</h2>
-        <button onClick={startNewConversation} style={{ marginBottom: 16 }}>New chat</button>
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {conversations.map((conv) => (
-            <li key={conv.sessionId}>
-              <button
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  background: conv.sessionId === sessionId ? 'rgba(99,102,241,0.2)' : 'transparent',
-                  color: 'inherit',
-                  border: '1px solid rgba(99,102,241,0.2)',
-                  borderRadius: 8,
-                  padding: '8px 10px',
-                  marginBottom: 8,
-                  cursor: 'pointer'
-                }}
-                onClick={() => loadConversation(conv.sessionId)}
-              >
-                <div style={{ fontWeight: 600 }}>{conv.title ?? 'Untitled chat'}</div>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>{conv.preview ?? '—'}</div>
-              </button>
-            </li>
-          ))}
-        </ul>
+    <div className="app">
+      <aside className="panel sidebar">
+        <div className="sidebar-header">
+          <h2 className="sidebar-title">Conversations</h2>
+          <button
+            type="button"
+            className="secondary"
+            onClick={startNewConversation}
+            disabled={streaming}
+          >
+            New chat
+          </button>
+        </div>
+        <div className="conversation-list">
+          {conversations.length === 0 ? (
+            <div className="empty-state">Start a new chat to see it listed here.</div>
+          ) : (
+            conversations.map((conv) => {
+              const isActive = conv.sessionId === sessionId;
+              return (
+                <button
+                  key={conv.sessionId}
+                  type="button"
+                  className={`conversation-item${isActive ? ' active' : ''}`}
+                  onClick={() => loadConversation(conv.sessionId)}
+                >
+                  <h4>{conv.title ?? 'Untitled chat'}</h4>
+                  <p>{conv.preview ?? '—'}</p>
+                </button>
+              );
+            })
+          )}
+        </div>
       </aside>
 
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <header style={{ padding: '16px 24px', borderBottom: '1px solid rgba(148,163,184,0.2)' }}>
-          <h1 style={{ margin: 0 }}>Private AI</h1>
-          <p style={{ margin: '4px 0 0', color: '#cbd5f5' }}>{status}</p>
+      <main className="panel chat">
+        <header className="chat-header">
+          <div>
+            <h1>Private AI</h1>
+            <p>{status}</p>
+          </div>
+          <div className="chat-actions">
+            <div className="status">
+              <span className="status-dot" />
+              <span>{streaming ? 'Generating response…' : 'Ready'}</span>
+            </div>
+          </div>
         </header>
 
-        <section style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-          {messages.map((msg) => (
-            <div key={msg.id} style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>{msg.role === 'assistant' ? 'AI' : 'You'}</div>
-              <div style={{
-                background: msg.role === 'assistant' ? 'rgba(99,102,241,0.15)' : 'rgba(239,68,68,0.15)',
-                padding: '10px 14px',
-                borderRadius: 12
-              }}>
-                {msg.content}
-              </div>
+        <section className="messages" ref={messagesViewportRef}>
+          {messages.length === 0 ? (
+            <div className="empty-thread">
+              Ask a question to start chatting with your private model.
             </div>
-          ))}
+          ) : (
+            messages.map((msg) => {
+              const key = msg.id ?? msg.localId;
+              const timestamp = formatTimestamp(msg.timestamp);
+              return (
+                <article key={key} className="message">
+                  <div className={`message-avatar ${msg.role}`}>
+                    {msg.role === 'assistant' ? 'AI' : 'You'}
+                  </div>
+                  <div
+                    className={[
+                      'message-content',
+                      msg.role,
+                      msg.streaming ? 'streaming' : ''
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    <div className="message-header">
+                      <span className={`message-role ${msg.role}`}>
+                        {msg.role === 'assistant' ? 'Assistant' : 'You'}
+                      </span>
+                      {timestamp ? (
+                        <span className="message-timestamp">{timestamp}</span>
+                      ) : null}
+                    </div>
+                    <MarkdownMessage content={msg.content ?? ''} />
+                  </div>
+                </article>
+              );
+            })
+          )}
         </section>
 
-        <form onSubmit={sendMessage} style={{ padding: 24, borderTop: '1px solid rgba(148,163,184,0.2)' }}>
+        <form className="composer" onSubmit={sendMessage}>
           <textarea
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             placeholder="Ask anything…"
             disabled={streaming}
-            style={{ width: '100%', minHeight: 120, borderRadius: 12, padding: 12, resize: 'vertical' }}
           />
-          <button type="submit" disabled={streaming || !prompt.trim()} style={{ marginTop: 12 }}>
-            {streaming ? 'Generating…' : 'Send'}
-          </button>
+          <div className="composer-actions">
+            <span className="status">
+              <span className="status-dot" />
+              <span>{streaming ? 'Generating response…' : 'Ready for input'}</span>
+            </span>
+            <button type="submit" className="primary" disabled={streaming || !prompt.trim()}>
+              {streaming ? 'Generating…' : 'Send'}
+            </button>
+          </div>
         </form>
       </main>
     </div>

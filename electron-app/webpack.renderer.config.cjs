@@ -6,14 +6,21 @@ const isProduction = process.env.NODE_ENV === 'production';
 module.exports = {
   mode: isProduction ? 'production' : 'development',
   devtool: isProduction ? false : 'source-map',
-  target: 'electron-renderer',
+  target: 'web',
   entry: './renderer/index.jsx',
   output: {
     path: path.resolve(__dirname, 'build/renderer'),
     filename: 'renderer.js'
   },
   resolve: {
-    extensions: ['.js', '.jsx']
+    extensions: ['.js', '.jsx'],
+    fallback: {
+      path: require.resolve('path-browserify')
+    },
+    alias: {
+      'node:path': require.resolve('path-browserify'),
+      path: require.resolve('path-browserify')
+    }
   },
   module: {
     rules: [

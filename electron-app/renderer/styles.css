@@ -71,6 +71,14 @@ body {
   padding: 0.5rem 0;
 }
 
+.empty-state {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 1.5rem 1.25rem;
+  text-align: center;
+  opacity: 0.8;
+}
+
 .conversation-item {
   padding: 0.75rem 1.25rem;
   border-radius: 12px;
@@ -78,6 +86,11 @@ body {
   position: relative;
   transition: background 0.2s ease, transform 0.2s ease;
   margin: 0 0.75rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  width: calc(100% - 1.5rem);
 }
 
 .conversation-item:hover {
@@ -144,6 +157,15 @@ body {
   gap: 1rem;
 }
 
+.empty-thread {
+  margin: auto;
+  text-align: center;
+  max-width: 360px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
 .message {
   display: flex;
   gap: 0.75rem;
@@ -177,13 +199,102 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.25);
   line-height: 1.6;
   font-size: 0.95rem;
-  white-space: pre-wrap;
+  white-space: normal;
+  overflow: hidden;
   word-break: break-word;
 }
 
 .message-content.assistant {
   background: rgba(99, 102, 241, 0.08);
   border: 1px solid rgba(99, 102, 241, 0.35);
+}
+
+.markdown-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p {
+  margin: 0;
+}
+
+.markdown-body code {
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Monaco, 'Courier New', monospace;
+  background: rgba(99, 102, 241, 0.15);
+  border-radius: 6px;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.88rem;
+}
+
+.markdown-body pre {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.markdown-body pre code {
+  display: block;
+  padding: 1rem 1.1rem;
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  font-size: 0.85rem;
+  overflow-x: auto;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0;
+  padding-left: 1.3rem;
+}
+
+.markdown-body li + li {
+  margin-top: 0.35rem;
+}
+
+.markdown-body blockquote {
+  margin: 0;
+  padding-left: 1rem;
+  border-left: 3px solid rgba(99, 102, 241, 0.35);
+  color: rgba(203, 213, 225, 0.75);
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+}
+
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.message-content.streaming::after {
+  content: '';
+  display: inline-block;
+  width: 0.5rem;
+  height: 1.2rem;
+  margin-left: 0.2rem;
+  background: rgba(229, 231, 235, 0.9);
+  border-radius: 1px;
+  animation: blink 1s steps(1, end) infinite;
 }
 
 .message-header {
@@ -280,6 +391,17 @@ body {
   100% {
     opacity: 0.8;
     transform: scale(0.7);
+  }
+}
+
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
   }
 }
 
