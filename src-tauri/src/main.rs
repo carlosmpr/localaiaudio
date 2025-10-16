@@ -270,6 +270,11 @@ async fn load_config() -> Result<Option<AppConfig>, String> {
 }
 
 #[tauri::command]
+async fn delete_config() -> Result<String, String> {
+    storage::delete_config().await
+}
+
+#[tauri::command]
 async fn get_model_catalog() -> Result<Vec<ModelCatalogEntry>, String> {
     model_catalog::load_catalog()
 }
@@ -609,6 +614,7 @@ fn main() {
         setup_storage,
         save_config,
         load_config,
+        delete_config,
         get_model_catalog,
         get_available_runtimes,
         load_embedded_model,

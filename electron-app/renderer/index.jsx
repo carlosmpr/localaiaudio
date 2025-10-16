@@ -471,6 +471,127 @@ function App() {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      const handleStreamEvent = (line) => {
+        if (!line) {
+          return;
+        }
+        let eventPayload;
+        try {
+          eventPayload = JSON.parse(line);
+        } catch (error) {
+          console.warn('Failed to parse chunk', error, line);
+          return;
+        }
+
+        switch (eventPayload.type) {
+          case 'session':
+            setSessionId(eventPayload.sessionId);
+            loadConversations();
+            break;
+          case 'user-message':
+            setMessages((prev) => [...prev.slice(0, -1), eventPayload.message]);
+            break;
+          case 'token':
+            if (!tempAssistant) {
+              tempAssistantLocalId = `assistant-${Date.now()}`;
+              const streamingMessage = {
+                id: tempAssistantLocalId,
+                localId: tempAssistantLocalId,
+                role: 'assistant',
+                content: eventPayload.chunk ?? '',
+                timestamp: new Date().toISOString(),
+                streaming: true
+              };
+              tempAssistant = streamingMessage;
+              activeStreamMessageRef.current = streamingMessage.localId;
+              setMessages((prev) => {
+                const next = [...prev, streamingMessage];
+                tempAssistantIndex = next.length - 1;
+                return next;
+              });
+            } else {
+              streamingBuffer += eventPayload.chunk ?? '';
+              scheduleFlush();
+            }
+            break;
+          case 'done':
+            if (flushTimer) {
+              clearTimeout(flushTimer);
+              flushTimer = null;
+            }
+            flushStreamingBuffer();
+            if (eventPayload.message) {
+              const finalMessage = {
+                ...eventPayload.message,
+                localId: tempAssistant?.localId ?? tempAssistantLocalId ?? eventPayload.message.id,
+                streaming: false
+              };
+              tempAssistant = finalMessage;
+              activeStreamMessageRef.current = null;
+              setMessages((prev) => {
+                if (!prev.length) {
+                  return [finalMessage];
+                }
+                const next = [...prev];
+                let index = tempAssistantIndex ?? next.length - 1;
+                const matches = (msg) =>
+                  (msg.localId ?? msg.id) === (finalMessage.localId ?? finalMessage.id);
+                if (index < 0 || index >= next.length || !matches(next[index])) {
+                  index = next.findIndex(matches);
+                  tempAssistantIndex = index;
+                }
+                if (index >= 0) {
+                  next[index] = finalMessage;
+                  return next;
+                }
+                return [...prev, finalMessage];
+              });
+            }
+            loadConversations();
+            break;
+          case 'aborted':
+            if (tempAssistant) {
+              if (flushTimer) {
+                clearTimeout(flushTimer);
+                flushTimer = null;
+              }
+              flushStreamingBuffer();
+              const abortedMessage = {
+                ...tempAssistant,
+                streaming: false
+              };
+              tempAssistant = abortedMessage;
+              activeStreamMessageRef.current = null;
+              setMessages((prev) => {
+                if (!prev.length) return prev;
+                const next = [...prev];
+                let index = tempAssistantIndex ?? next.length - 1;
+                if (
+                  index < 0 ||
+                  index >= next.length ||
+                  (next[index].localId ?? next[index].id) !== abortedMessage.localId
+                ) {
+                  index = next.findIndex(
+                    (msg) => (msg.localId ?? msg.id) === abortedMessage.localId
+                  );
+                  tempAssistantIndex = index;
+                }
+                if (index >= 0) {
+                  next[index] = abortedMessage;
+                  return next;
+                }
+                return prev;
+              });
+            }
+            break;
+          case 'error':
+            console.error(eventPayload.message);
+            break;
+          default:
+            break;
+        }
+      };
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -480,123 +601,20 @@ function App() {
         while ((index = buffer.indexOf('\n')) >= 0) {
           const line = buffer.slice(0, index).trim();
           buffer = buffer.slice(index + 1);
-          if (!line) continue;
-          let eventPayload;
-          try {
-            eventPayload = JSON.parse(line);
-          } catch (error) {
-            console.warn('Failed to parse chunk', error, line);
-            continue;
-          }
-
-          switch (eventPayload.type) {
-            case 'session':
-              setSessionId(eventPayload.sessionId);
-              loadConversations();
-              break;
-            case 'user-message':
-              setMessages((prev) => [...prev.slice(0, -1), eventPayload.message]);
-              break;
-            case 'token':
-              if (!tempAssistant) {
-                tempAssistantLocalId = `assistant-${Date.now()}`;
-                const streamingMessage = {
-                  id: tempAssistantLocalId,
-                  localId: tempAssistantLocalId,
-                  role: 'assistant',
-                  content: eventPayload.chunk ?? '',
-                  timestamp: new Date().toISOString(),
-                  streaming: true
-                };
-                tempAssistant = streamingMessage;
-                activeStreamMessageRef.current = streamingMessage.localId;
-                setMessages((prev) => {
-                  const next = [...prev, streamingMessage];
-                  tempAssistantIndex = next.length - 1;
-                  return next;
-                });
-              } else {
-                streamingBuffer += eventPayload.chunk ?? '';
-                scheduleFlush();
-              }
-              break;
-            case 'done':
-              if (flushTimer) {
-                clearTimeout(flushTimer);
-                flushTimer = null;
-              }
-              flushStreamingBuffer();
-              if (eventPayload.message) {
-                const finalMessage = {
-                  ...eventPayload.message,
-                  localId: tempAssistant?.localId ?? tempAssistantLocalId ?? eventPayload.message.id,
-                  streaming: false
-                };
-                tempAssistant = finalMessage;
-                activeStreamMessageRef.current = null;
-                setMessages((prev) => {
-                  if (!prev.length) {
-                    return [finalMessage];
-                  }
-                  const next = [...prev];
-                  let index = tempAssistantIndex ?? next.length - 1;
-                  const matches = (msg) =>
-                    (msg.localId ?? msg.id) === (finalMessage.localId ?? finalMessage.id);
-                  if (index < 0 || index >= next.length || !matches(next[index])) {
-                    index = next.findIndex(matches);
-                    tempAssistantIndex = index;
-                  }
-                  if (index >= 0) {
-                    next[index] = finalMessage;
-                    return next;
-                  }
-                  return [...prev, finalMessage];
-                });
-              }
-              loadConversations();
-              break;
-            case 'aborted':
-              if (tempAssistant) {
-                if (flushTimer) {
-                  clearTimeout(flushTimer);
-                  flushTimer = null;
-                }
-                flushStreamingBuffer();
-                const abortedMessage = {
-                  ...tempAssistant,
-                  streaming: false
-                };
-                tempAssistant = abortedMessage;
-                activeStreamMessageRef.current = null;
-                setMessages((prev) => {
-                  if (!prev.length) return prev;
-                  const next = [...prev];
-                  let index = tempAssistantIndex ?? next.length - 1;
-                  if (
-                    index < 0 ||
-                    index >= next.length ||
-                    (next[index].localId ?? next[index].id) !== abortedMessage.localId
-                  ) {
-                    index = next.findIndex(
-                      (msg) => (msg.localId ?? msg.id) === abortedMessage.localId
-                    );
-                    tempAssistantIndex = index;
-                  }
-                  if (index >= 0) {
-                    next[index] = abortedMessage;
-                    return next;
-                  }
-                  return prev;
-                });
-              }
-              break;
-            case 'error':
-              console.error(eventPayload.message);
-              break;
-            default:
-              break;
-          }
+          handleStreamEvent(line);
         }
+      }
+
+      buffer += decoder.decode();
+      let index;
+      while ((index = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, index).trim();
+        buffer = buffer.slice(index + 1);
+        handleStreamEvent(line);
+      }
+      const remaining = buffer.trim();
+      if (remaining) {
+        handleStreamEvent(remaining);
       }
     } catch (error) {
       if (error.name === 'AbortError') {

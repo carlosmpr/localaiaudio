@@ -12,6 +12,15 @@ pub struct ModelInfo {
 }
 
 impl ModelInfo {
+    pub fn llama32_1b() -> Self {
+        Self {
+            name: "Llama 3.2 1B Instruct".to_string(),
+            url: "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf".to_string(),
+            filename: "llama3.2-1b.gguf".to_string(),
+            size_mb: 800,
+        }
+    }
+
     pub fn gemma_1b() -> Self {
         Self {
             name: "Gemma 3 1B Instruct".to_string(),
@@ -125,39 +134,11 @@ pub async fn download_default_model(
     target_dir: &Path,
     app_handle: AppHandle,
 ) -> Result<PathBuf, String> {
-    let model_info = ModelInfo::gemma_1b();
+    let model_info = ModelInfo::llama32_1b();
     let target_path = target_dir.join(&model_info.filename);
 
-    // Check if model already exists in target directory
-    if target_path.exists() {
-        app_handle
-            .emit_all(
-                "model-download-status",
-                format!("Model {} already installed", model_info.filename),
-            )
-            .ok();
-        return Ok(target_path);
-    }
-
-    // Check if model exists in the user's home PrivateAI/Models directory
-    if let Some(home_dir) = dirs::home_dir() {
-        let home_models_dir = home_dir.join("PrivateAI").join("Models");
-        let home_model_path = home_models_dir.join(&model_info.filename);
-
-        if home_model_path.exists() {
-            app_handle
-                .emit_all(
-                    "model-download-status",
-                    format!("Found existing model in ~/PrivateAI/Models, using it..."),
-                )
-                .ok();
-
-            // Just return the existing path - no need to copy
-            return Ok(home_model_path);
-        }
-    }
-
-    // Check if model is bundled with the app - try multiple paths
+    // PRIORITY 1: Check if model is bundled with the app - try multiple paths
+    // This ensures we ALWAYS use the bundled model
     let resource_paths = vec![
         format!("Models/{}", model_info.filename),
         format!("../Models/{}", model_info.filename),
@@ -170,26 +151,33 @@ pub async fn download_default_model(
                 app_handle
                     .emit_all(
                         "model-download-status",
-                        format!("Copying bundled model {} to storage...", model_info.filename),
+                        format!("Using bundled model {}...", model_info.filename),
                     )
                     .ok();
 
-                // Copy bundled model to target directory
-                std::fs::copy(&bundled_path, &target_path)
-                    .map_err(|e| format!("Failed to copy bundled model: {e}"))?;
-
-                app_handle
-                    .emit_all(
-                        "model-download-status",
-                        format!("Bundled model {} installed successfully", model_info.filename),
-                    )
-                    .ok();
-
-                return Ok(target_path);
+                // Use the bundled model directly without copying to save space
+                // The bundled path is stable and always available
+                return Ok(bundled_path);
             }
         }
     }
 
-    // Model not bundled, download from internet
-    download_model(model_info, target_dir, app_handle).await
+    // PRIORITY 2: If no bundled model found (shouldn't happen in production),
+    // check if already copied to target directory
+    if target_path.exists() {
+        app_handle
+            .emit_all(
+                "model-download-status",
+                format!("Model {} already installed", model_info.filename),
+            )
+            .ok();
+        return Ok(target_path);
+    }
+
+    // PRIORITY 3: Model not bundled and not in target directory - this is an error condition
+    // The app should always have the bundled model
+    Err(format!(
+        "Bundled model {} not found. Please reinstall the application.",
+        model_info.filename
+    ))
 }

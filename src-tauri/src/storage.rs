@@ -90,3 +90,20 @@ pub async fn ensure_directory(path: &Path) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to create directory {}: {e}", path.display()))
 }
+
+pub async fn delete_config() -> Result<String, String> {
+    let base_dir = get_base_dir().await?;
+    let config_path = base_dir.join("Config").join("app.json");
+
+    // Check if config exists
+    if !config_path.exists() {
+        return Ok("No configuration file found".to_string());
+    }
+
+    // Delete the config file
+    fs::remove_file(&config_path)
+        .await
+        .map_err(|e| format!("Failed to delete config file: {}", e))?;
+
+    Ok(format!("Configuration deleted: {}", config_path.display()))
+}

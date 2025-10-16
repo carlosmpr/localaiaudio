@@ -1088,10 +1088,10 @@ async function runSetup() {
       // Step 3: Download model if not present
       setStep('model');
       const modelsDir = String(state.paths.models).replace(/\\/g, '/');
-      const expectedModelPath = `${modelsDir}/gemma-3-1b-it-Q4_0.gguf`;
+      const expectedModelPath = `${modelsDir}/llama3.2-1b.gguf`;
 
       elements.stepStatus.textContent = 'Checking for AI model...';
-      log('info', 'Checking for Gemma 3 1B model...');
+      log('info', 'Checking for Llama 3.2 1B model...');
 
       try {
         const downloadedModelPath = await invoke('download_model', {
@@ -1128,7 +1128,7 @@ async function runSetup() {
           created_at: new Date().toISOString(),
           hardware: state.hardware,
           model: {
-            selected: 'gemma-1b-embedded',
+            selected: 'llama3.2-1b-embedded',
             status: 'available',
             path: state.modelPath ?? null
           },
@@ -1141,8 +1141,8 @@ async function runSetup() {
 
       setStep('complete');
       elements.stepStatus.textContent = 'Setup complete. Opening chat experience.';
-      state.activeModel = 'gemma-1b-embedded';
-      elements.activeModel.textContent = 'Model: gemma-1b (Embedded)';
+      state.activeModel = 'llama3.2-1b-embedded';
+      elements.activeModel.textContent = 'Model: llama3.2-1b (Embedded)';
       elements.sendBtn.disabled = false;
       toggleViews(true);
       void refreshConversationList({ preserveSelection: false });
@@ -1739,7 +1739,7 @@ async function bootstrap() {
           await invoke('load_embedded_model', {
             modelPath: config.model?.path ?? state.modelPath
           });
-          state.activeModel = config.model.selected || 'gemma-1b-embedded';
+          state.activeModel = config.model.selected || 'llama3.2-1b-embedded';
           elements.activeModel.textContent = `Model: ${state.activeModel}`;
           elements.sendBtn.disabled = false;
           toggleViews(true);
