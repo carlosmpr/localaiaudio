@@ -951,6 +951,53 @@ body.chat-mode header {
   border-top: 1px solid rgba(94, 155, 255, 0.15);
 }
 
+/* Code block header with language label and copy button */
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5em 0.75em;
+  background: rgba(9, 11, 19, 0.8);
+  border-bottom: 1px solid rgba(94, 155, 255, 0.15);
+  margin: -1em -1em 0.75em -1em;
+  border-radius: 0.5em 0.5em 0 0;
+}
+
+.code-language {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.code-copy-btn {
+  padding: 0.35em 0.75em;
+  font-size: 0.75em;
+  border: 1px solid rgba(94, 155, 255, 0.3);
+  border-radius: 0.4em;
+  background: rgba(94, 155, 255, 0.1);
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-weight: 600;
+}
+
+.code-copy-btn:hover {
+  background: rgba(94, 155, 255, 0.2);
+  border-color: rgba(94, 155, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.code-copy-btn:active {
+  transform: translateY(0);
+}
+
+/* Remove the old language label pseudo-element since we now have a proper header */
+.bubble.assistant .markdown-content pre[data-language]::before {
+  display: none;
+}
+
 @media (max-width: 1080px) {
   main {
     grid-template-columns: 1fr;

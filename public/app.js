@@ -1287,9 +1287,38 @@ function updateStreamingMarkdown(bubble, content) {
           if (!block.classList.contains('hljs')) {
             hljs.highlightElement(block);
           }
-          const lang = block.className.match(/language-(\w+)/);
-          if (lang && lang[1]) {
-            block.parentElement.setAttribute('data-language', lang[1]);
+
+          // Add language label and copy button
+          const pre = block.parentElement;
+          if (!pre.querySelector('.code-header')) {
+            const lang = block.className.match(/language-(\w+)/);
+            const language = lang && lang[1] ? lang[1] : 'text';
+
+            // Create code header with language label and copy button
+            const header = document.createElement('div');
+            header.className = 'code-header';
+
+            const langLabel = document.createElement('span');
+            langLabel.className = 'code-language';
+            langLabel.textContent = language;
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'code-copy-btn';
+            copyBtn.textContent = 'Copy';
+            copyBtn.onclick = () => {
+              const code = block.textContent;
+              navigator.clipboard.writeText(code).then(() => {
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => {
+                  copyBtn.textContent = 'Copy';
+                }, 2000);
+              });
+            };
+
+            header.appendChild(langLabel);
+            header.appendChild(copyBtn);
+            pre.insertBefore(header, block);
+            pre.setAttribute('data-language', language);
           }
         });
       }
@@ -1323,10 +1352,37 @@ function appendMessageBubble(role, content = '') {
             hljs.highlightElement(block);
           }
 
-          // Add language label to pre element
-          const lang = block.className.match(/language-(\w+)/);
-          if (lang && lang[1]) {
-            block.parentElement.setAttribute('data-language', lang[1]);
+          // Add language label and copy button
+          const pre = block.parentElement;
+          if (!pre.querySelector('.code-header')) {
+            const lang = block.className.match(/language-(\w+)/);
+            const language = lang && lang[1] ? lang[1] : 'text';
+
+            // Create code header with language label and copy button
+            const header = document.createElement('div');
+            header.className = 'code-header';
+
+            const langLabel = document.createElement('span');
+            langLabel.className = 'code-language';
+            langLabel.textContent = language;
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'code-copy-btn';
+            copyBtn.textContent = 'Copy';
+            copyBtn.onclick = () => {
+              const code = block.textContent;
+              navigator.clipboard.writeText(code).then(() => {
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => {
+                  copyBtn.textContent = 'Copy';
+                }, 2000);
+              });
+            };
+
+            header.appendChild(langLabel);
+            header.appendChild(copyBtn);
+            pre.insertBefore(header, block);
+            pre.setAttribute('data-language', language);
           }
         });
       }
