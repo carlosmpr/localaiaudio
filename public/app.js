@@ -27,9 +27,9 @@ const state = {
   conversationsLoaded: false,
   conversationLoading: false,
   settings: {
-    contextStrategy: 'sliding',
-    maxMessages: 20,
-    maxTokens: 8192,
+    contextStrategy: 'auto',  // Always auto-manage context
+    maxMessages: 100,  // High limit - token count is the real limit
+    maxTokens: 60000,  // 60k tokens for 8GB RAM systems (backend adjusts based on RAM)
     temperature: 0.7
   }
 };
@@ -442,60 +442,50 @@ function estimateTokens(text) {
   return Math.ceil(text.length / 4);
 }
 
-// Apply context strategy to filter messages
+// Apply automatic context management - ALWAYS trims based on token count
+// This ensures the conversation can continue indefinitely like Claude does
 function applyContextStrategy(messages) {
   if (!Array.isArray(messages) || messages.length === 0) {
     return [];
   }
 
-  const { contextStrategy, maxMessages, maxTokens } = state.settings;
+  const { maxTokens } = state.settings;
 
-  // Send all messages
-  if (contextStrategy === 'all') {
-    return messages;
+  // ALWAYS use token-based trimming - keep most recent messages that fit
+  // Target 75% of max tokens to leave room for new user message + response
+  const targetTokens = maxTokens * 0.75;
+  const result = [];
+  let tokenCount = 0;
+
+  // Work backwards from most recent messages
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    const msgTokens = estimateTokens(msg.content);
+
+    // If adding this message would exceed target, stop
+    if (tokenCount + msgTokens > targetTokens) {
+      break;
+    }
+
+    result.unshift(msg);
+    tokenCount += msgTokens;
   }
 
-  // Sliding window - last N messages
-  if (contextStrategy === 'sliding') {
-    if (messages.length <= maxMessages) {
-      return messages;
-    }
-    return messages.slice(-maxMessages);
+  // Safety: always keep at least the last 2 messages (user + assistant pair)
+  if (result.length < 2 && messages.length >= 2) {
+    const lastTwo = messages.slice(-2);
+    const lastTwoTokens = lastTwo.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
+    console.log(`[AUTO-CLEANUP] Keeping minimum 2 messages (${lastTwoTokens} tokens)`);
+    return lastTwo;
   }
 
-  // Smart limit - keep first + recent messages
-  if (contextStrategy === 'smart') {
-    if (messages.length <= maxMessages) {
-      return messages;
-    }
-
-    const result = [];
-    let tokenCount = 0;
-
-    // Keep first message for context
-    if (messages[0]) {
-      result.push(messages[0]);
-      tokenCount += estimateTokens(messages[0].content);
-    }
-
-    // Add recent messages respecting token limit
-    const recentMessages = messages.slice(-maxMessages + 1);
-    for (let i = recentMessages.length - 1; i >= 0; i--) {
-      const msg = recentMessages[i];
-      const msgTokens = estimateTokens(msg.content);
-
-      if (tokenCount + msgTokens <= maxTokens) {
-        result.unshift(msg);
-        tokenCount += msgTokens;
-      } else {
-        break;
-      }
-    }
-
-    return result;
+  // Log cleanup if messages were dropped
+  if (result.length < messages.length) {
+    const droppedCount = messages.length - result.length;
+    console.log(`[AUTO-CLEANUP] Dropped ${droppedCount} old messages. Keeping ${result.length} recent messages (${tokenCount}/${maxTokens} tokens)`);
   }
 
-  return messages;
+  return result;
 }
 
 // Load settings from localStorage
@@ -535,9 +525,20 @@ function updateContextStats() {
   })));
   const willSendCount = filteredMessages.length;
 
+  // Calculate tokens that will be sent to model
+  const willSendTokens = filteredMessages.reduce((sum, msg) =>
+    sum + estimateTokens(msg.content), 0);
+
   elements.currentMessageCount.textContent = totalMessages;
-  elements.estimatedTokens.textContent = totalTokens;
+  elements.estimatedTokens.textContent = `${willSendTokens}/${state.settings.maxTokens}`;
   elements.willSendCount.textContent = willSendCount;
+
+  // Visual warning if approaching context limit
+  const usagePercent = (willSendTokens / state.settings.maxTokens) * 100;
+  if (elements.estimatedTokens) {
+    elements.estimatedTokens.style.color = usagePercent >= 90 ? '#ff6b6b' :
+                                            usagePercent >= 70 ? '#ffa500' : '';
+  }
 }
 
 // Open settings modal

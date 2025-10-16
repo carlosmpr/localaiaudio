@@ -170,7 +170,7 @@ pub async fn chat_with_model(
     let model = model_guard.as_ref()
         .ok_or_else(|| "Model not loaded. Call load_model first.".to_string())?;
 
-    // Detect available memory and adapt context size for compatibility
+    // Use large context window - model supports 128k, we'll use 120k with frontend managing it
     let (n_ctx, n_batch) = {
         #[cfg(target_os = "macos")]
         {
@@ -181,38 +181,38 @@ pub async fn chat_with_model(
                     if let Ok(total_mem) = mem_str.trim().parse::<u64>() {
                         let total_gb = total_mem / (1024 * 1024 * 1024);
 
-                        // Adaptive context sizing based on RAM
-                        // More RAM = larger context for better conversations
+                        // Use maximum context - frontend handles trimming automatically
+                        // Model supports 128k, use 120k to leave buffer for response
                         let context_size = if total_gb >= 16 {
-                            println!("[INFO] High RAM detected ({}GB), using 8192 token context", total_gb);
-                            8192
+                            println!("[INFO] High RAM detected ({}GB), using full 120k context window", total_gb);
+                            120000
                         } else if total_gb >= 8 {
-                            println!("[INFO] Medium RAM detected ({}GB), using 4096 token context", total_gb);
-                            4096
+                            println!("[INFO] Medium RAM detected ({}GB), using 60k context window", total_gb);
+                            60000
                         } else {
-                            println!("[INFO] Lower RAM detected ({}GB), using 2048 token context for stability", total_gb);
-                            2048
+                            println!("[INFO] Lower RAM detected ({}GB), using 30k context window", total_gb);
+                            30000
                         };
 
-                        (context_size, context_size)
+                        (context_size, 8192) // Keep batch size at 8k for efficiency
                     } else {
-                        println!("[WARN] Could not parse memory, using safe default 4096");
-                        (4096, 4096)
+                        println!("[WARN] Could not parse memory, using safe default 60k");
+                        (60000, 8192)
                     }
                 } else {
-                    println!("[WARN] Could not read memory info, using safe default 4096");
-                    (4096, 4096)
+                    println!("[WARN] Could not read memory info, using safe default 60k");
+                    (60000, 8192)
                 }
             } else {
-                println!("[WARN] sysctl not available, using safe default 4096");
-                (4096, 4096)
+                println!("[WARN] sysctl not available, using safe default 60k");
+                (60000, 8192)
             }
         }
 
         #[cfg(not(target_os = "macos"))]
         {
-            println!("[INFO] Non-macOS system, using default 4096 token context");
-            (4096, 4096)
+            println!("[INFO] Non-macOS system, using default 60k token context");
+            (60000, 8192)
         }
     };
 
@@ -281,35 +281,125 @@ pub async fn chat_with_model(
         return Err("Tokenization produced no tokens".into());
     }
 
-    // Process tokens - use larger batch size to handle long conversations
-    let mut batch = LlamaBatch::new(8192, 1);
     let tokens_len = tokens.len();
+    println!("[INFO] Prompt tokenized to {} tokens (context capacity: {})", tokens_len, n_ctx);
+
+    // CRITICAL: Check if prompt exceeds KV cache capacity BEFORE attempting to decode
+    // This prevents the NoKvCacheSlot error that crashes the app
+    if tokens_len >= n_ctx {
+        let error_msg = format!(
+            "Context overflow: Prompt requires {} tokens but context limit is {} tokens. \
+             The frontend should have cleaned up old messages automatically.",
+            tokens_len, n_ctx
+        );
+        println!("[ERROR] {}", error_msg);
+
+        // Emit user-friendly error to frontend
+        app_handle
+            .emit_all("chat-stream", StreamPayload {
+                content: format!("⚠️ **Context Cleanup Needed**\n\n\
+                    The conversation has grown too large ({} tokens).\n\n\
+                    Please start a new conversation to continue.\n\n\
+                    *(Auto-cleanup attempted but context is still too full)*",
+                    tokens_len),
+            })
+            .ok();
+
+        app_handle
+            .emit_all("embedded-stream-done", "")
+            .ok();
+
+        return Err(error_msg);
+    }
+
+    // Warn if we're approaching capacity (85% full)
+    let capacity_threshold = (n_ctx as f32 * 0.85) as usize;
+    if tokens_len >= capacity_threshold {
+        let warning_msg = format!(
+            "⚠️ Context usage high: {}/{} tokens ({}%). Auto-cleanup will activate soon.",
+            tokens_len, n_ctx, (tokens_len as f32 / n_ctx as f32 * 100.0) as u32
+        );
+        println!("[WARN] {}", warning_msg);
+
+        app_handle
+            .emit_all("chat-status", warning_msg.clone())
+            .ok();
+    }
+
+    // Process tokens - use batch size that fits within context window
+    let batch_size = n_ctx.min(8192);
+    let mut batch = LlamaBatch::new(batch_size, 1);
+
     for (i, &token) in tokens.iter().enumerate() {
         // Set logits=true for the last token so we can generate from it
         let is_last = i == tokens_len - 1;
         batch.add(token, i as i32, &[0], is_last)
-            .map_err(|e| format!("Failed to add token: {e}"))?;
+            .map_err(|e| format!("Failed to add token to batch: {e}"))?;
     }
 
+    // Decode the initial prompt
     ctx.decode(&mut batch)
-        .map_err(|e| format!("Failed to decode: {e}"))?;
+        .map_err(|e| {
+            // Better error message for KV cache issues
+            if e.to_string().contains("NoKvCacheSlot") || e.to_string().contains("slot") {
+                format!("KV cache exhausted during prompt processing. Context: {}/{} tokens used. \
+                        Start a new conversation or reduce message history.",
+                        tokens_len, n_ctx)
+            } else {
+                format!("Failed to decode prompt: {e}")
+            }
+        })?;
 
     println!("[DEBUG] Batch decoded successfully, starting generation loop");
 
-    // Generate response
+    // Generate response with proper context management
     let mut accumulated = String::new();
-    let max_tokens = 4096;  // Maximum generation length - allows very long responses
+
+    // Calculate safe generation limit: reserve space for prompt + response
+    // Leave 10% buffer for safety
+    let remaining_tokens = n_ctx.saturating_sub(tokens_len);
+    let safe_buffer = (remaining_tokens as f32 * 0.1) as usize;
+    let max_generation_tokens = remaining_tokens.saturating_sub(safe_buffer).min(4096);
+
     let mut n_past = tokens_len as i32;
 
-    println!("[DEBUG] Starting generation with max_tokens={}, n_past={}", max_tokens, n_past);
+    println!(
+        "[INFO] Starting generation: prompt={} tokens, context_capacity={}, max_generation={}, n_past={}",
+        tokens_len, n_ctx, max_generation_tokens, n_past
+    );
 
-    for i in 0..max_tokens {
+    // Early exit if no room for generation
+    if max_generation_tokens < 10 {
+        let error_msg = "Context is too full to generate a response. Please start a new conversation.";
+        println!("[ERROR] {}", error_msg);
+
+        app_handle
+            .emit_all("chat-stream", StreamPayload {
+                content: format!("⚠️ {}", error_msg),
+            })
+            .ok();
+
+        app_handle
+            .emit_all("embedded-stream-done", "")
+            .ok();
+
+        return Err(error_msg.into());
+    }
+
+    for i in 0..max_generation_tokens {
         // Check if generation was cancelled (non-blocking check)
         if let Ok(cancel_flag) = state.cancel_generation.try_lock() {
             if *cancel_flag {
                 println!("[DEBUG] Generation cancelled by user at iteration {}", i);
                 break;
             }
+        }
+
+        // Safety check: ensure we haven't exceeded context capacity
+        if n_past as usize >= n_ctx {
+            println!("[WARN] Context capacity reached at {} tokens, stopping generation", n_past);
+            accumulated.push_str("\n\n⚠️ *Context limit reached. Start a new conversation to continue.*");
+            break;
         }
 
         // For the first iteration, logits are at the last position of the initial batch
@@ -354,7 +444,7 @@ pub async fn chat_with_model(
 
         // Emit streaming update with controlled frequency to prevent overwhelming the UI
         // Only emit every 5 tokens or on last token to balance smoothness and performance
-        if i % 5 == 0 || i == max_tokens - 1 {
+        if i % 5 == 0 || i == max_generation_tokens - 1 {
             app_handle
                 .emit_all("chat-stream", StreamPayload {
                     content: accumulated.clone(),
@@ -365,24 +455,25 @@ pub async fn chat_with_model(
         // Add token to batch for next iteration
         batch.clear();
 
-        // Check if we're about to exceed context limit
-        if n_past >= 8192 {
-            println!("[WARN] Reached context limit at {} tokens, stopping generation", n_past);
-            accumulated.push_str("\n\n[Context limit reached. Please start a new conversation.]");
-            break;
-        }
-
         batch.add(new_token, n_past, &[0], true)
             .map_err(|e| {
-                if e.to_string().contains("Insufficient") {
-                    format!("Context window full ({} tokens). Please start a new conversation to continue.", n_past)
+                if e.to_string().contains("Insufficient") || e.to_string().contains("slot") {
+                    format!("Context window exhausted ({}/{} tokens). Start a new conversation.", n_past, n_ctx)
                 } else {
-                    format!("Failed to add token: {e}")
+                    format!("Failed to add token to batch: {e}")
                 }
             })?;
 
+        // Decode next token with improved error handling
         ctx.decode(&mut batch)
-            .map_err(|e| format!("Failed to decode: {e}"))?;
+            .map_err(|e| {
+                if e.to_string().contains("NoKvCacheSlot") || e.to_string().contains("slot") {
+                    format!("KV cache exhausted at token {} (context {}/{}). Start a new conversation.",
+                            n_past, n_past, n_ctx)
+                } else {
+                    format!("Failed to decode token: {e}")
+                }
+            })?;
 
         n_past += 1;
     }
