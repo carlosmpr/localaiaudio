@@ -146,6 +146,8 @@ function App() {
   const [draftSettings, setDraftSettings] = useState(() => normaliseSettings(DEFAULT_SETTINGS));
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const messagesViewportRef = useRef(null);
+  const activeStreamControllerRef = useRef(null);
+  const activeStreamMessageRef = useRef(null);
 
   function openSettings() {
     setDraftSettings(settings);
@@ -235,6 +237,49 @@ function App() {
     }));
   };
 
+  function stopStreamingResponse() {
+    const controller = activeStreamControllerRef.current;
+    if (controller) {
+      controller.abort();
+      activeStreamControllerRef.current = null;
+    }
+    const streamingId = activeStreamMessageRef.current;
+    if (streamingId) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          (msg.localId ?? msg.id) === streamingId ? { ...msg, streaming: false } : msg
+        )
+      );
+      activeStreamMessageRef.current = null;
+    }
+    setStreaming(false);
+  }
+
+  async function deleteConversationRequest(targetSessionId) {
+    if (!targetSessionId) return;
+    if (streaming && targetSessionId === sessionId) {
+      stopStreamingResponse();
+    }
+    const confirmed = window.confirm('Delete this conversation? This action cannot be undone.');
+    if (!confirmed) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/conversations/${targetSessionId}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) {
+        throw new Error(`Failed with status ${res.status}`);
+      }
+      setConversations((prev) => prev.filter((conv) => conv.sessionId !== targetSessionId));
+      if (targetSessionId === sessionId) {
+        setSessionId(null);
+        setMessages([]);
+      }
+      loadConversations();
+    } catch (error) {
+      console.error(`Unable to delete conversation ${targetSessionId}`, error);
+    }
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -247,6 +292,13 @@ function App() {
       }
     } catch (error) {
       console.warn('Unable to restore saved settings', error);
+    }
+  }, []);
+
+  useEffect(() => () => {
+    const controller = activeStreamControllerRef.current;
+    if (controller) {
+      controller.abort();
     }
   }, []);
 
@@ -318,6 +370,7 @@ function App() {
 
     const trimmedPrompt = prompt.trim();
     const normalizedSettings = normaliseSettings(settings);
+    activeStreamMessageRef.current = null;
     const payload = {
       message: trimmedPrompt,
       sessionId,
@@ -353,11 +406,15 @@ function App() {
 
     setMessages((prev) => [...prev, localUser]);
 
+    const controller = new AbortController();
+    activeStreamControllerRef.current = controller;
+
     try {
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
 
       if (!res.ok || !res.body) {
@@ -452,6 +509,7 @@ function App() {
                   streaming: true
                 };
                 tempAssistant = streamingMessage;
+                activeStreamMessageRef.current = streamingMessage.localId;
                 setMessages((prev) => {
                   const next = [...prev, streamingMessage];
                   tempAssistantIndex = next.length - 1;
@@ -475,6 +533,7 @@ function App() {
                   streaming: false
                 };
                 tempAssistant = finalMessage;
+                activeStreamMessageRef.current = null;
                 setMessages((prev) => {
                   if (!prev.length) {
                     return [finalMessage];
@@ -508,6 +567,7 @@ function App() {
                   streaming: false
                 };
                 tempAssistant = abortedMessage;
+                activeStreamMessageRef.current = null;
                 setMessages((prev) => {
                   if (!prev.length) return prev;
                   const next = [...prev];
@@ -539,9 +599,37 @@ function App() {
         }
       }
     } catch (error) {
-      console.error(error);
+      if (error.name === 'AbortError') {
+        if (flushTimer) {
+          clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        flushStreamingBuffer();
+        if (tempAssistant) {
+          tempAssistant = {
+            ...tempAssistant,
+            streaming: false
+          };
+          setMessages((prev) => {
+            const streamingId = tempAssistant.localId ?? tempAssistant.id;
+            return prev.map((msg) =>
+              (msg.localId ?? msg.id) === streamingId ? { ...msg, streaming: false } : msg
+            );
+          });
+        }
+      } else {
+        console.error(error);
+      }
     } finally {
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
       setStreaming(false);
+      streamingBuffer = '';
+      activeStreamControllerRef.current = null;
+      activeStreamMessageRef.current = null;
+      loadConversations();
     }
   }
 
@@ -590,7 +678,21 @@ function App() {
                   className={`conversation-item${isActive ? ' active' : ''}`}
                   onClick={() => loadConversation(conv.sessionId)}
                 >
-                  <h4>{conv.title ?? 'Untitled chat'}</h4>
+                  <div className="conversation-item-header">
+                    <h4>{conv.title ?? 'Untitled chat'}</h4>
+                    <button
+                      type="button"
+                      className="icon-button delete-button"
+                      title="Delete conversation"
+                      aria-label={`Delete conversation ${conv.title ?? 'Untitled chat'}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        deleteConversationRequest(conv.sessionId);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
                   <p>{conv.preview ?? '—'}</p>
                 </button>
               );
@@ -677,9 +779,16 @@ function App() {
               <span className="status-dot" />
               <span>{streaming ? 'Generating response…' : 'Ready for input'}</span>
             </span>
-            <button type="submit" className="primary" disabled={streaming || !prompt.trim()}>
-              {streaming ? 'Generating…' : 'Send'}
-            </button>
+            <div className="composer-buttons">
+              {streaming ? (
+                <button type="button" className="danger" onClick={stopStreamingResponse}>
+                  Stop
+                </button>
+              ) : null}
+              <button type="submit" className="primary" disabled={streaming || !prompt.trim()}>
+                {streaming ? 'Generating…' : 'Send'}
+              </button>
+            </div>
           </div>
         </form>
       </main>

@@ -184,12 +184,27 @@ async function saveConversation(conversation, directories, filePath) {
   return conversation;
 }
 
+async function deleteConversation(sessionId, baseDir) {
+  const directories = await ensureDirectories(baseDir);
+  const filePath = conversationPath(directories, sessionId);
+  try {
+    await fs.unlink(filePath);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return false;
+    }
+    throw error;
+  }
+}
+
 module.exports = {
   ensureDirectories,
   listConversations,
   getConversation,
   createConversation,
   saveConversation,
+  deleteConversation,
   createMessage,
   buildSummary,
   createSessionId

@@ -13,6 +13,7 @@ const {
   getConversation,
   createConversation,
   saveConversation,
+  deleteConversation: removeConversation,
   createMessage,
   buildSummary,
   createSessionId
@@ -622,6 +623,23 @@ async function handleCreateConversation(res, baseDir) {
   }
 }
 
+async function handleDeleteConversation(res, sessionId) {
+  try {
+    const removed = await removeConversation(sessionId, baseStorageDir);
+    sessionMap.delete(sessionId);
+    if (!removed) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Conversation not found' }));
+      return;
+    }
+    res.writeHead(204).end();
+  } catch (error) {
+    console.error(`Failed to delete conversation ${sessionId}`, error);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Failed to delete conversation' }));
+  }
+}
+
 const isDev = process.env.NODE_ENV === 'development';
 const customRendererDir = process.env.PRIVATE_AI_RENDERER_DIR;
 const defaultRendererDir = isDev
@@ -671,6 +689,12 @@ function createServer() {
       if (method === 'GET' && pathname.startsWith('/api/conversations/')) {
         const sessionId = pathname.split('/').pop();
         await handleGetConversation(res, sessionId);
+        return;
+      }
+
+      if (method === 'DELETE' && pathname.startsWith('/api/conversations/')) {
+        const sessionId = pathname.split('/').pop();
+        await handleDeleteConversation(res, sessionId);
         return;
       }
 
