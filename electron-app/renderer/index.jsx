@@ -408,6 +408,51 @@ function App() {
 
     const controller = new AbortController();
     activeStreamControllerRef.current = controller;
+    let tempAssistant = null;
+    let tempAssistantLocalId = null;
+    let tempAssistantIndex = null;
+    let streamingBuffer = '';
+    let flushTimer = null;
+
+    const flushStreamingBuffer = () => {
+      if (!tempAssistant || !streamingBuffer) {
+        return;
+      }
+      tempAssistant = {
+        ...tempAssistant,
+        content: `${tempAssistant.content ?? ''}${streamingBuffer}`,
+        streaming: true
+      };
+      streamingBuffer = '';
+      setMessages((prev) => {
+        if (!prev.length) return prev;
+        const next = [...prev];
+        let index = tempAssistantIndex ?? next.length - 1;
+        if (
+          index < 0 ||
+          index >= next.length ||
+          (next[index].localId ?? next[index].id) !== tempAssistant.localId
+        ) {
+          index = next.findIndex(
+            (msg) => (msg.localId ?? msg.id) === tempAssistant.localId
+          );
+          tempAssistantIndex = index;
+        }
+        if (index >= 0) {
+          next[index] = tempAssistant;
+          return next;
+        }
+        return prev;
+      });
+    };
+
+    const scheduleFlush = () => {
+      if (flushTimer) return;
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        flushStreamingBuffer();
+      }, 32);
+    };
 
     try {
       const res = await fetch(`${API_BASE}/api/chat`, {
@@ -425,51 +470,6 @@ function App() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let tempAssistant = null;
-      let tempAssistantLocalId = null;
-      let tempAssistantIndex = null;
-      let streamingBuffer = '';
-      let flushTimer = null;
-
-      const flushStreamingBuffer = () => {
-        if (!tempAssistant || !streamingBuffer) {
-          return;
-        }
-        tempAssistant = {
-          ...tempAssistant,
-          content: `${tempAssistant.content ?? ''}${streamingBuffer}`,
-          streaming: true
-        };
-        streamingBuffer = '';
-        setMessages((prev) => {
-          if (!prev.length) return prev;
-          const next = [...prev];
-          let index = tempAssistantIndex ?? next.length - 1;
-          if (
-            index < 0 ||
-            index >= next.length ||
-            (next[index].localId ?? next[index].id) !== tempAssistant.localId
-          ) {
-            index = next.findIndex(
-              (msg) => (msg.localId ?? msg.id) === tempAssistant.localId
-            );
-            tempAssistantIndex = index;
-          }
-          if (index >= 0) {
-            next[index] = tempAssistant;
-            return next;
-          }
-          return prev;
-        });
-      };
-
-      const scheduleFlush = () => {
-        if (flushTimer) return;
-        flushTimer = setTimeout(() => {
-          flushTimer = null;
-          flushStreamingBuffer();
-        }, 32);
-      };
 
       while (true) {
         const { value, done } = await reader.read();
@@ -671,12 +671,20 @@ function App() {
           ) : (
             conversations.map((conv) => {
               const isActive = conv.sessionId === sessionId;
+              const handleActivate = () => loadConversation(conv.sessionId);
               return (
-                <button
+                <div
                   key={conv.sessionId}
-                  type="button"
                   className={`conversation-item${isActive ? ' active' : ''}`}
-                  onClick={() => loadConversation(conv.sessionId)}
+                  role="button"
+                  tabIndex={0}
+                  onClick={handleActivate}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleActivate();
+                    }
+                  }}
                 >
                   <div className="conversation-item-header">
                     <h4>{conv.title ?? 'Untitled chat'}</h4>
@@ -694,7 +702,7 @@ function App() {
                     </button>
                   </div>
                   <p>{conv.preview ?? '—'}</p>
-                </button>
+                </div>
               );
             })
           )}
