@@ -18,3 +18,16 @@ python/runtime/
 .Models
 Models/
 *.gguf
+
+# Build tools and installers
+cmake-3.31.6-windows-x86_64/
+cmake-installer.msi
+cmake.zip
+rustup-init.exe
+LLVM-installer.exe
+*.msi
+*.exe
+!src-tauri/icons/*.ico
+
+# Claude Code
+.claude/
