@@ -20,9 +20,14 @@ const {
 
 const DEFAULT_PORT = Number(process.env.PORT ?? 3333);
 const DEFAULT_HOST = process.env.HOST ?? '127.0.0.1';
-const DEFAULT_MODEL_FILENAME = 'gemma-3-1b-it-Q4_0.gguf';
+const DEFAULT_MODEL_FILENAME = 'llama3.2-1b.gguf';
+const PREFERRED_MODEL_FILENAMES = [
+  'llama3.2-1b.gguf'
+];
+const DEFAULT_SYSTEM_PROMPT =
+  'You are an unbiased, helpful local AI. Provide accurate, detailed answers tailored to the user\'s questions. Share actionable steps or examples when possible, and be transparent about uncertainty. Avoid referencing online services or claiming specific corporate identities.';
 
-const workspaceModelPath = path.join(__dirname, '..', 'Models', DEFAULT_MODEL_FILENAME);
+const workspaceModelPath = path.join(__dirname, '..', 'models', DEFAULT_MODEL_FILENAME);
 const baseStorageDir = resolveBaseDir();
 
 function pathExistsSync(candidate) {
@@ -75,23 +80,17 @@ async function pathExists(candidate) {
 }
 
 async function resolveModelPath() {
-  const explicit = process.env.PRIVATE_AI_MODEL_PATH;
-  const defaultPath = path.join(baseStorageDir, 'Models', DEFAULT_MODEL_FILENAME);
-
-  const candidates = [explicit, workspaceModelPath, defaultPath].filter(Boolean);
-  for (const candidate of candidates) {
-    if (await pathExists(candidate)) {
-      return path.resolve(candidate);
-    }
+  const candidates = await resolveModelCandidates();
+  if (candidates.length === 0) {
+    throw new Error(
+      [
+        'Unable to locate a GGUF model file.',
+        'Set PRIVATE_AI_MODEL_PATH or place one of the preferred models inside',
+        `${path.join(__dirname, '..', 'models')}.`
+      ].join(' ')
+    );
   }
-
-  throw new Error(
-    [
-      'Unable to locate a GGUF model file.',
-      'Set PRIVATE_AI_MODEL_PATH or place a model named',
-      `"${DEFAULT_MODEL_FILENAME}" inside either ${path.dirname(workspaceModelPath)} or ${path.dirname(defaultPath)}.`
-    ].join(' ')
-  );
+  return candidates[0];
 }
 
 async function ensureModel() {
@@ -104,10 +103,32 @@ async function ensureModel() {
   if (!modelLoadPromise) {
     modelLoadPromise = (async () => {
       try {
-        const modelPath = await resolveModelPath();
-        const model = await llama.loadModel({ modelPath });
-        cachedModelPath = modelPath;
-        return model;
+        const candidates = await resolveModelCandidates();
+        if (!candidates.length) {
+          throw new Error('No model candidates available.');
+        }
+
+        const errors = [];
+        for (const candidate of candidates) {
+          try {
+            const resolved = path.resolve(candidate);
+            const model = await llama.loadModel({ modelPath: resolved });
+            cachedModelPath = resolved;
+            process.env.PRIVATE_AI_MODEL_PATH = resolved;
+            return model;
+          } catch (innerError) {
+            const message =
+              innerError?.message ??
+              (typeof innerError === 'string' ? innerError : 'Unknown load failure');
+            console.warn(`Failed to load model at ${candidate}: ${message}`);
+            errors.push({ candidate, error: message });
+          }
+        }
+
+        const detail = errors
+          .map((entry) => `${entry.candidate} -> ${entry.error}`)
+          .join('; ');
+        throw new Error(`Failed to load any model candidate. ${detail}`);
       } catch (error) {
         modelLoadPromise = null;
         throw error;
@@ -118,7 +139,48 @@ async function ensureModel() {
   return modelLoadPromise;
 }
 
-async function ensureSession(sessionId, options = {}) {
+async function resolveModelCandidates() {
+  const candidates = [];
+  const seen = new Set();
+
+  const addCandidate = async (candidatePath) => {
+    if (!candidatePath) return;
+    const resolved = path.resolve(candidatePath);
+    if (seen.has(resolved)) return;
+    if (await pathExists(resolved)) {
+      candidates.push(resolved);
+      seen.add(resolved);
+    }
+  };
+
+  await addCandidate(process.env.PRIVATE_AI_MODEL_PATH);
+
+  const workspaceDir = path.join(__dirname, '..', 'models');
+  const storageModelsDir = path.join(baseStorageDir, 'Models');
+
+  for (const fileName of PREFERRED_MODEL_FILENAMES) {
+    await addCandidate(path.join(storageModelsDir, fileName));
+    await addCandidate(path.join(workspaceDir, fileName));
+  }
+
+  const scanDirs = [storageModelsDir, workspaceDir];
+  for (const dir of scanDirs) {
+    try {
+      const entries = await fsp.readdir(dir);
+      for (const entry of entries) {
+        if (entry.endsWith('.gguf')) {
+          await addCandidate(path.join(dir, entry));
+        }
+      }
+    } catch {
+      // ignore missing directories
+    }
+  }
+
+  return candidates;
+}
+
+async function ensureSession(sessionId) {
   const key = sessionId ?? createSessionId();
   if (sessionMap.has(key)) {
     return { key, ...sessionMap.get(key) };
@@ -137,15 +199,6 @@ async function ensureSession(sessionId, options = {}) {
     queue: Promise.resolve()
   };
   sessionMap.set(key, entry);
-
-  // If there is existing chat history, load it into the session.
-  if (options.chatHistory && Array.isArray(options.chatHistory) && options.chatHistory.length) {
-    try {
-      chatSession.setChatHistory(options.chatHistory);
-    } catch (error) {
-      console.warn(`Failed to restore chat history for session ${key}`, error);
-    }
-  }
 
   return { key, ...entry };
 }
@@ -195,20 +248,152 @@ async function serveStaticFile(res, filePath) {
   }
 }
 
+const DEFAULT_MAX_TOKENS = 4096;
+const MAX_ALLOWED_TOKENS = 8192;
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+function applyHistoryWindow(history, windowSize) {
+  if (!Array.isArray(history) || history.length === 0) {
+    return [];
+  }
+  if (!Number.isFinite(windowSize) || windowSize <= 0) {
+    return history.map(cloneHistoryEntry);
+  }
+  const maxEntries = Math.max(2, Math.floor(windowSize) * 2);
+  const sliceStart = Math.max(0, history.length - maxEntries);
+  return history.slice(sliceStart).map(cloneHistoryEntry);
+}
+
+function cloneHistoryEntry(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return entry;
+  }
+  if (entry.type === 'model') {
+    return {
+      type: 'model',
+      response: Array.isArray(entry.response) ? [...entry.response] : []
+    };
+  }
+  if (entry.type === 'user') {
+    return {
+      type: 'user',
+      text: entry.text ?? ''
+    };
+  }
+  if (entry.type === 'system') {
+    return {
+      type: 'system',
+      text: entry.text ?? ''
+    };
+  }
+  return JSON.parse(JSON.stringify(entry));
+}
+
+function buildHistoryFromMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [];
+  }
+  const history = [];
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message || typeof message !== 'object') continue;
+    const content = typeof message.content === 'string' ? message.content : '';
+    if (message.role === 'assistant') {
+      history.push({
+        type: 'model',
+        response: [content]
+      });
+    } else if (message.role === 'user') {
+      const isLast = index === messages.length - 1;
+      if (isLast) {
+        // Last user message is sent separately as the current prompt.
+        continue;
+      }
+      history.push({
+        type: 'user',
+        text: content
+      });
+    } else if (message.role === 'system') {
+      history.push({
+        type: 'system',
+        text: content
+      });
+    }
+  }
+  return history;
+}
+
+async function ensureSystemPrompt(conversation, directories, filePath) {
+  if (!conversation || !directories || !filePath) return conversation;
+
+  const [firstMessage] = conversation.messages;
+  if (firstMessage && firstMessage.role === 'system') {
+    if (firstMessage.content === DEFAULT_SYSTEM_PROMPT) {
+      return conversation;
+    }
+    conversation.messages[0] = {
+      ...firstMessage,
+      content: DEFAULT_SYSTEM_PROMPT
+    };
+  } else {
+    const systemMessage = createMessage('system', DEFAULT_SYSTEM_PROMPT);
+    conversation.messages.unshift(systemMessage);
+  }
+
+  await saveConversation(conversation, directories, filePath);
+  return conversation;
+}
+
+function normaliseRepeatPenalty(settings = {}) {
+  const source = typeof settings.repeatPenalty === 'object' && settings.repeatPenalty !== null
+    ? settings.repeatPenalty
+    : {};
+  const penalty = clampNumber(
+    Number.isFinite(source.penalty) ? source.penalty : 1.18,
+    1,
+    2
+  );
+  const lastTokens = clampNumber(
+    Number.isFinite(source.lastTokens) ? Math.floor(source.lastTokens) : 256,
+    32,
+    1024
+  );
+  const penalizeNewLine =
+    typeof source.penalizeNewLine === 'boolean' ? source.penalizeNewLine : true;
+  return {
+    penalty,
+    lastTokens,
+    penalizeNewLine
+  };
+}
+
 function mapSettings(settings = {}) {
-  const temperature = Number.isFinite(settings.temperature)
-    ? settings.temperature
-    : 0.7;
-  const maxTokens = Number.isFinite(settings.maxTokens) ? settings.maxTokens : undefined;
+  const rawTemperature = Number.isFinite(settings.temperature) ? settings.temperature : 0.7;
+  const temperature = clampNumber(rawTemperature, 0, 2);
+  const rawMaxTokens = Number.isFinite(settings.maxTokens) ? settings.maxTokens : DEFAULT_MAX_TOKENS;
+  const maxTokens = clampNumber(Math.floor(rawMaxTokens), 64, MAX_ALLOWED_TOKENS);
   const topP = Number.isFinite(settings.topP) ? settings.topP : undefined;
   const topK = Number.isFinite(settings.topK) ? settings.topK : undefined;
   const contextStrategy = settings.contextStrategy ?? 'auto';
+  const rawMessageWindow = Number.isFinite(settings.messageWindow)
+    ? Math.max(0, Math.floor(settings.messageWindow))
+    : 0;
+  const messageWindow = contextStrategy === 'sliding' ? rawMessageWindow : 0;
+  const repeatPenalty = normaliseRepeatPenalty(settings);
   return {
     temperature,
     maxTokens,
     topP,
     topK,
-    contextStrategy
+    contextStrategy,
+    messageWindow,
+    repeatPenalty
   };
 }
 
@@ -265,18 +450,24 @@ async function handleChat(req, res) {
 
   const isNewConversation = !conversation;
   if (!conversation) {
-    const userMessage = createMessage('user', prompt);
     ({ conversation, filePath } = await createConversation({
       baseDir,
-      sessionId,
-      firstMessage: userMessage
+      sessionId
     }));
-  } else {
-    const userMessage = createMessage('user', prompt);
-    conversation.messages.push(userMessage);
-    conversation.updatedAt = new Date().toISOString();
-    await saveConversation(conversation, directories, filePath);
   }
+
+  conversation = await ensureSystemPrompt(conversation, directories, filePath);
+
+  const userMessage = createMessage('user', prompt);
+  conversation.messages.push(userMessage);
+  conversation.updatedAt = new Date().toISOString();
+  await saveConversation(conversation, directories, filePath);
+
+  const fullHistory = buildHistoryFromMessages(conversation.messages);
+  const historyForSession =
+    settings.contextStrategy === 'sliding'
+      ? applyHistoryWindow(fullHistory, settings.messageWindow)
+      : fullHistory.map(cloneHistoryEntry);
 
   res.writeHead(200, {
     'Content-Type': 'application/x-ndjson; charset=utf-8',
@@ -305,14 +496,29 @@ async function handleChat(req, res) {
   });
 
   try {
-    const { key: resolvedSessionId, session, queue } = await ensureSession(sessionId, {
-      chatHistory: conversation.chatHistory
-    });
-
+    const { key: resolvedSessionId, session, queue } = await ensureSession(sessionId);
     let accumulated = '';
     const run = queue
       .catch(() => undefined)
       .then(async () => {
+        if (typeof session.reset === 'function') {
+          try {
+            session.reset();
+          } catch (error) {
+            console.warn(`Failed to reset session ${resolvedSessionId}`, error);
+          }
+        }
+        if (historyForSession.length && typeof session.setChatHistory === 'function') {
+          try {
+            session.setChatHistory(historyForSession.map(cloneHistoryEntry));
+          } catch (error) {
+            console.warn(`Failed to restore chat history for session ${resolvedSessionId}`, error);
+          }
+        } else if (historyForSession.length && typeof session.setChatHistory !== 'function') {
+          console.warn(
+            `Chat history provided for session ${resolvedSessionId}, but setChatHistory is unavailable.`
+          );
+        }
         await session.prompt(prompt, {
           temperature: settings.temperature,
           maxTokens: settings.maxTokens,
@@ -332,7 +538,8 @@ async function handleChat(req, res) {
         assistantMessage.timestamp = new Date().toISOString();
         assistantMessage.streaming = false;
         conversation.messages.push(assistantMessage);
-        conversation.chatHistory = session.getChatHistory();
+        const fullHistoryForStorage = buildHistoryFromMessages(conversation.messages);
+        conversation.chatHistory = fullHistoryForStorage.map(cloneHistoryEntry);
         conversation.updatedAt = assistantMessage.timestamp;
         await saveConversation(conversation, directories, filePath);
 

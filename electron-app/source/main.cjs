@@ -63,6 +63,8 @@ const MODELS_DIR = app.isPackaged
   ? path.join(process.resourcesPath, 'models')
   : resolveResourcePath('resources', 'models');
 
+const DEFAULT_MODEL_FILENAME = 'llama3.2-1b.gguf';
+
 function registerModulePath(candidate) {
   if (!pathExists(candidate)) {
     return;
@@ -89,15 +91,22 @@ function ensureDir(dirPath) {
 
 function copyBundledModel(destinationDir) {
   try {
-    const files = fs.readdirSync(MODELS_DIR);
-    for (const file of files) {
-      if (file.endsWith('.gguf')) {
-        const src = path.join(MODELS_DIR, file);
-        const dest = path.join(destinationDir, file);
-        // Always copy to ensure the model is present and correct.
-        fs.copyFileSync(src, dest);
-        return dest;
-      }
+    const files = fs.readdirSync(MODELS_DIR).filter((file) => file.endsWith('.gguf'));
+    if (!files.length) {
+      return null;
+    }
+    const ordered = [
+      ...new Set([
+        DEFAULT_MODEL_FILENAME,
+        ...files
+      ])
+    ].filter((file) => files.includes(file));
+    for (const file of ordered) {
+      const src = path.join(MODELS_DIR, file);
+      const dest = path.join(destinationDir, file);
+      // Always copy to ensure the model is present and correct.
+      fs.copyFileSync(src, dest);
+      return dest;
     }
   } catch (error) {
     console.warn('No bundled model found:', error.message);
@@ -121,7 +130,13 @@ async function startBackend() {
     const modelsDestDir = path.join(privateAiDir, 'Models');
     ensureDir(modelsDestDir);
 
-    const modelPath = copyBundledModel(modelsDestDir);
+    let modelPath = null;
+    const preferredModelPath = path.join(MODELS_DIR, DEFAULT_MODEL_FILENAME);
+    if (pathExists(preferredModelPath)) {
+      modelPath = preferredModelPath;
+    } else {
+      modelPath = copyBundledModel(modelsDestDir);
+    }
     if (modelPath) {
       process.env.PRIVATE_AI_MODEL_PATH = modelPath;
     }
