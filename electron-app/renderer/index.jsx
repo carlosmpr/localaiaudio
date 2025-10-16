@@ -370,6 +370,49 @@ function App() {
       let buffer = '';
       let tempAssistant = null;
       let tempAssistantLocalId = null;
+      let tempAssistantIndex = null;
+      let streamingBuffer = '';
+      let flushTimer = null;
+
+      const flushStreamingBuffer = () => {
+        if (!tempAssistant || !streamingBuffer) {
+          return;
+        }
+        tempAssistant = {
+          ...tempAssistant,
+          content: `${tempAssistant.content ?? ''}${streamingBuffer}`,
+          streaming: true
+        };
+        streamingBuffer = '';
+        setMessages((prev) => {
+          if (!prev.length) return prev;
+          const next = [...prev];
+          let index = tempAssistantIndex ?? next.length - 1;
+          if (
+            index < 0 ||
+            index >= next.length ||
+            (next[index].localId ?? next[index].id) !== tempAssistant.localId
+          ) {
+            index = next.findIndex(
+              (msg) => (msg.localId ?? msg.id) === tempAssistant.localId
+            );
+            tempAssistantIndex = index;
+          }
+          if (index >= 0) {
+            next[index] = tempAssistant;
+            return next;
+          }
+          return prev;
+        });
+      };
+
+      const scheduleFlush = () => {
+        if (flushTimer) return;
+        flushTimer = setTimeout(() => {
+          flushTimer = null;
+          flushStreamingBuffer();
+        }, 32);
+      };
 
       while (true) {
         const { value, done } = await reader.read();
@@ -400,7 +443,7 @@ function App() {
             case 'token':
               if (!tempAssistant) {
                 tempAssistantLocalId = `assistant-${Date.now()}`;
-                tempAssistant = {
+                const streamingMessage = {
                   id: tempAssistantLocalId,
                   localId: tempAssistantLocalId,
                   role: 'assistant',
@@ -408,21 +451,23 @@ function App() {
                   timestamp: new Date().toISOString(),
                   streaming: true
                 };
-                setMessages((prev) => [...prev, tempAssistant]);
+                tempAssistant = streamingMessage;
+                setMessages((prev) => {
+                  const next = [...prev, streamingMessage];
+                  tempAssistantIndex = next.length - 1;
+                  return next;
+                });
               } else {
-                tempAssistant = {
-                  ...tempAssistant,
-                  content: `${tempAssistant.content ?? ''}${eventPayload.chunk ?? ''}`,
-                  streaming: true
-                };
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.localId === tempAssistant.localId ? tempAssistant : msg
-                  )
-                );
+                streamingBuffer += eventPayload.chunk ?? '';
+                scheduleFlush();
               }
               break;
             case 'done':
+              if (flushTimer) {
+                clearTimeout(flushTimer);
+                flushTimer = null;
+              }
+              flushStreamingBuffer();
               if (eventPayload.message) {
                 const finalMessage = {
                   ...eventPayload.message,
@@ -431,16 +476,20 @@ function App() {
                 };
                 tempAssistant = finalMessage;
                 setMessages((prev) => {
-                  const hasPlaceholder = prev.some(
-                    (msg) =>
-                      msg.localId === finalMessage.localId || msg.id === finalMessage.id
-                  );
-                  if (hasPlaceholder) {
-                    return prev.map((msg) =>
-                      msg.localId === finalMessage.localId || msg.id === finalMessage.id
-                        ? finalMessage
-                        : msg
-                    );
+                  if (!prev.length) {
+                    return [finalMessage];
+                  }
+                  const next = [...prev];
+                  let index = tempAssistantIndex ?? next.length - 1;
+                  const matches = (msg) =>
+                    (msg.localId ?? msg.id) === (finalMessage.localId ?? finalMessage.id);
+                  if (index < 0 || index >= next.length || !matches(next[index])) {
+                    index = next.findIndex(matches);
+                    tempAssistantIndex = index;
+                  }
+                  if (index >= 0) {
+                    next[index] = finalMessage;
+                    return next;
                   }
                   return [...prev, finalMessage];
                 });
@@ -449,16 +498,36 @@ function App() {
               break;
             case 'aborted':
               if (tempAssistant) {
+                if (flushTimer) {
+                  clearTimeout(flushTimer);
+                  flushTimer = null;
+                }
+                flushStreamingBuffer();
                 const abortedMessage = {
                   ...tempAssistant,
                   streaming: false
                 };
                 tempAssistant = abortedMessage;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.localId === abortedMessage.localId ? abortedMessage : msg
-                  )
-                );
+                setMessages((prev) => {
+                  if (!prev.length) return prev;
+                  const next = [...prev];
+                  let index = tempAssistantIndex ?? next.length - 1;
+                  if (
+                    index < 0 ||
+                    index >= next.length ||
+                    (next[index].localId ?? next[index].id) !== abortedMessage.localId
+                  ) {
+                    index = next.findIndex(
+                      (msg) => (msg.localId ?? msg.id) === abortedMessage.localId
+                    );
+                    tempAssistantIndex = index;
+                  }
+                  if (index >= 0) {
+                    next[index] = abortedMessage;
+                    return next;
+                  }
+                  return prev;
+                });
               }
               break;
             case 'error':
@@ -588,7 +657,7 @@ function App() {
                         <span className="message-timestamp">{timestamp}</span>
                       ) : null}
                     </div>
-                    <MarkdownMessage content={msg.content ?? ''} />
+                    <MarkdownMessage content={msg.content ?? ''} streaming={Boolean(msg.streaming)} />
                   </div>
                 </article>
               );
