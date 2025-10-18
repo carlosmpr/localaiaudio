@@ -73,8 +73,55 @@ const elements = {
   currentMessageCount: document.getElementById('currentMessageCount'),
   estimatedTokens: document.getElementById('estimatedTokens'),
   willSendCount: document.getElementById('willSendCount'),
-  maxMessagesContainer: document.getElementById('maxMessagesContainer')
+  maxMessagesContainer: document.getElementById('maxMessagesContainer'),
+  themeToggle: document.getElementById('themeToggle'),
+  themeIcon: document.getElementById('themeIcon'),
+  highlightTheme: document.getElementById('highlightTheme')
 };
+
+// ========================================
+// THEME MANAGEMENT
+// ========================================
+
+function loadTheme() {
+  try {
+    const savedTheme = localStorage.getItem('privateai_theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+    applyTheme(theme);
+  } catch (error) {
+    console.warn('Failed to load theme:', error);
+    applyTheme('light');
+  }
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+
+  if (elements.themeIcon) {
+    elements.themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
+  }
+
+  // Update syntax highlighting theme
+  if (elements.highlightTheme) {
+    const highlightHref = theme === 'dark'
+      ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css'
+      : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css';
+    elements.highlightTheme.href = highlightHref;
+  }
+
+  try {
+    localStorage.setItem('privateai_theme', theme);
+  } catch (error) {
+    console.warn('Failed to save theme:', error);
+  }
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  applyTheme(newTheme);
+}
 
 const TAURI = window.__TAURI__ || {};
 const invoke = TAURI.tauri?.invoke;
@@ -1588,6 +1635,7 @@ function attachEventListeners() {
   elements.startSetupBtn.addEventListener('click', runSetup);
   elements.chatForm.addEventListener('submit', handleChatSubmit);
   elements.stopBtn?.addEventListener('click', stopStreaming);
+  elements.themeToggle?.addEventListener('click', toggleTheme);
 
   // Add Enter key handler for chat input
   elements.chatInput?.addEventListener('keydown', (e) => {
@@ -1729,6 +1777,7 @@ function attachEventListeners() {
 }
 
 async function bootstrap() {
+  loadTheme();  // Initialize theme first
   setDefaultModelOptions();
   loadSettings();
   attachEventListeners();
