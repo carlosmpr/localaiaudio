@@ -1646,3 +1646,268 @@ body.chat-mode #chatView {
 .step-input-wrapper {
   margin-top: 1rem;
 }
+
+/* Workflow Input Form */
+.workflow-description-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.workflow-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.workflow-description-card h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--text-primary);
+}
+
+.workflow-description-card p {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.workflow-input-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.workflow-input-label {
+  display: block;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.workflow-input-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 0.875rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  transition: all 0.2s ease;
+  margin-bottom: 1rem;
+}
+
+.workflow-input-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.attach-workflow-doc-btn {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.workflow-file-preview {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.workflow-file-preview.hidden {
+  display: none;
+}
+
+.file-preview-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.file-preview-content span {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.file-preview-content p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.workflow-start-btn {
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.workflow-steps-preview {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.workflow-steps-preview h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 1rem;
+}
+
+.workflow-steps-list {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0;
+}
+
+.workflow-steps-list li {
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.workflow-steps-list li:last-child {
+  border-bottom: none;
+}
+
+/* Workflow Progress */
+.workflow-progress-header {
+  text-align: center;
+  padding: 2rem;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 2rem;
+}
+
+.workflow-progress-header h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.workflow-progress-header p {
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.workflow-progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.workflow-step-progress {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.2s ease;
+}
+
+.workflow-step-progress.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.workflow-step-progress.completed {
+  opacity: 0.8;
+}
+
+.workflow-step-progress.error {
+  border-color: #cf222e;
+  background: rgba(207, 34, 46, 0.05);
+}
+
+.step-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.step-progress-number {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.workflow-step-progress.active .step-progress-number {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+[data-theme="dark"] .workflow-step-progress.active .step-progress-number {
+  color: #1f1f1f;
+}
+
+.workflow-step-progress.completed .step-progress-number {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: white;
+}
+
+.step-progress-title {
+  flex: 1;
+  font-weight: 500;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.step-progress-status {
+  font-size: 0.875rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.step-progress-status.processing {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.step-progress-status.completed {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.step-progress-status.error {
+  background: rgba(207, 34, 46, 0.1);
+  color: #cf222e;
+}
+
+.step-progress-result {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-light);
+  line-height: 1.6;
+}
+
+.step-progress-result.hidden {
+  display: none;
+}

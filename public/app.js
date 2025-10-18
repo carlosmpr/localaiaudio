@@ -157,147 +157,139 @@ const openDialog = TAURI.dialog?.open;
 
 const WORKFLOW_TEMPLATES = {
   'social-media': {
-    name: 'Social Media Post',
+    name: 'Social Media Post Generator',
     icon: '📱',
-    description: 'Create engaging social media content',
+    description: 'Automatically generate engaging social media content from a topic',
+    inputPrompt: 'Enter your topic or message (e.g., "Launching a new AI privacy tool"):',
+    acceptsFile: false,
     steps: [
       {
-        title: 'Define Topic',
-        prompt: 'What is the main topic or message for your social media post?',
-        systemPrompt: 'Based on the topic "{input}", suggest 3-5 key angles or hooks that would make this engaging for social media. Be specific and creative.'
+        title: 'Analyze Topic & Identify Hooks',
+        systemPrompt: 'You are a social media expert. Analyze this topic and identify 3-5 engaging angles or hooks that would make this compelling for social media:\n\n{input}\n\nProvide your analysis as a brief summary of the best angle to pursue.'
       },
       {
-        title: 'Choose Angle',
-        prompt: 'Which angle do you want to focus on? (You can also write your own)',
-        systemPrompt: 'For the angle "{input}", write 3 different caption options with varying tones: professional, casual, and humorous. Each should be 2-3 sentences and include relevant hashtags.'
+        title: 'Generate Caption Options',
+        systemPrompt: 'Based on the previous analysis, write ONE polished social media caption (2-3 sentences) that is engaging, professional, and optimized for engagement. Include 3-5 relevant hashtags at the end.'
       },
       {
-        title: 'Refine Caption',
-        prompt: 'Which caption style do you prefer? (or provide feedback for refinement)',
-        systemPrompt: 'Refine the caption based on this feedback: "{input}". Provide the final polished version optimized for engagement, along with 5-10 relevant hashtags.'
+        title: 'Add Call-to-Action',
+        systemPrompt: 'Take the caption from the previous step and enhance it with a compelling call-to-action that encourages audience engagement (like, comment, share, visit link, etc.). Provide the complete final post ready to publish.'
       },
       {
-        title: 'Call-to-Action',
-        prompt: 'What action do you want your audience to take?',
-        systemPrompt: 'Add a compelling call-to-action to the caption that encourages: "{input}". Provide the complete final post ready to publish.'
+        title: 'Create Final Deliverable',
+        systemPrompt: 'Format the final social media post in a clean, ready-to-copy format with:\n1. The complete caption with CTA\n2. Hashtags on separate line\n3. Suggested posting time and platform tips\n\nThis is the final output.'
       }
     ]
   },
   'blog-post': {
-    name: 'Blog Post',
+    name: 'Blog Post Writer',
     icon: '📝',
-    description: 'Write a complete blog post with structure',
+    description: 'Automatically write a complete, structured blog post',
+    inputPrompt: 'Enter your blog topic (e.g., "How to build AI apps locally"):',
+    acceptsFile: false,
     steps: [
       {
-        title: 'Blog Topic',
-        prompt: 'What is your blog post about?',
-        systemPrompt: 'For the topic "{input}", suggest 5 compelling blog post titles that would attract readers. Make them specific and engaging.'
-      },
-      {
-        title: 'Create Outline',
-        prompt: 'Which title do you like? (or create your own)',
-        systemPrompt: 'Create a detailed outline for a blog post titled "{input}". Include: introduction hook, 4-6 main sections with subpoints, and conclusion. Make it comprehensive.'
+        title: 'Generate Title & Outline',
+        systemPrompt: 'You are a professional blog writer. For this topic:\n\n{input}\n\nCreate:\n1. ONE compelling, SEO-friendly blog post title\n2. A detailed outline with introduction, 4-5 main sections with subpoints, and conclusion\n\nProvide the title and outline.'
       },
       {
         title: 'Write Introduction',
-        prompt: 'Any specific points to emphasize in the intro? (or just say "continue")',
-        systemPrompt: 'Write an engaging introduction (2-3 paragraphs) for the blog post. Context: {input}. Hook the reader, establish credibility, and preview what they\'ll learn.'
+        systemPrompt: 'Based on the title and outline from the previous step, write an engaging introduction (2-3 paragraphs) that hooks the reader, establishes credibility, and previews what they will learn.'
       },
       {
-        title: 'Write Body',
-        prompt: 'Any additional details or examples to include? (or say "continue")',
-        systemPrompt: 'Write the main body sections of the blog post. Context: {input}. Make it informative, well-structured with headings, and include practical examples.'
+        title: 'Write Main Body',
+        systemPrompt: 'Using the outline and introduction, write the complete main body of the blog post. Include all sections with clear headings, practical examples, and actionable insights. Make it comprehensive and well-structured.'
       },
       {
         title: 'Write Conclusion',
-        prompt: 'What key takeaway or call-to-action? (or say "continue")',
-        systemPrompt: 'Write a strong conclusion for the blog post. Context: {input}. Summarize key points, provide actionable takeaways, and end with an engaging call-to-action.'
+        systemPrompt: 'Write a strong conclusion that summarizes key points, provides actionable takeaways, and ends with a compelling call-to-action.'
+      },
+      {
+        title: 'Format Final Post',
+        systemPrompt: 'Combine all parts (introduction, body, conclusion) into one complete, polished blog post with proper formatting, headings, and flow. This is the final deliverable ready to publish.'
       }
     ]
   },
   'email': {
-    name: 'Email Campaign',
+    name: 'Email Campaign Generator',
     icon: '✉️',
-    description: 'Draft professional email campaigns',
+    description: 'Automatically generate professional email campaigns',
+    inputPrompt: 'Enter your campaign goal (e.g., "Promote new product launch"):',
+    acceptsFile: false,
     steps: [
       {
-        title: 'Campaign Goal',
-        prompt: 'What is the goal of this email campaign?',
-        systemPrompt: 'For the goal "{input}", suggest 5 compelling subject lines that would achieve high open rates. Vary the approaches (urgency, curiosity, value-focused, etc.).'
+        title: 'Generate Subject Lines',
+        systemPrompt: 'You are an email marketing expert. For this campaign goal:\n\n{input}\n\nCreate ONE compelling subject line that would achieve high open rates. Focus on value, curiosity, or urgency.'
       },
       {
-        title: 'Select Subject',
-        prompt: 'Choose a subject line or write your own:',
-        systemPrompt: 'Write an attention-grabbing opening paragraph for an email with subject: "{input}". Hook the reader immediately and establish relevance.'
+        title: 'Write Opening',
+        systemPrompt: 'Write an attention-grabbing opening paragraph for the email that hooks the reader immediately and establishes relevance.'
       },
       {
-        title: 'Email Body',
-        prompt: 'What key benefits or information should the email convey?',
-        systemPrompt: 'Write the main body of the email that communicates: "{input}". Use persuasive copywriting, clear benefits, and maintain reader engagement.'
+        title: 'Write Email Body',
+        systemPrompt: 'Write the main body of the email with persuasive copywriting, clear benefits, and engaging content that maintains reader interest.'
       },
       {
-        title: 'Call-to-Action',
-        prompt: 'What specific action should recipients take?',
-        systemPrompt: 'Create a compelling call-to-action section for: "{input}". Include CTA button text, supporting copy, and a sense of urgency or value. Provide the complete final email.'
+        title: 'Add Call-to-Action',
+        systemPrompt: 'Add a compelling call-to-action section with CTA button text, supporting copy, and a sense of urgency or value.'
+      },
+      {
+        title: 'Format Complete Email',
+        systemPrompt: 'Combine all parts into one complete, professional email ready to send. Include subject line at top, formatted body, and clear CTA. This is the final deliverable.'
       }
     ]
   },
   'product-desc': {
-    name: 'Product Description',
+    name: 'Product Description Writer',
     icon: '🛍️',
-    description: 'Create compelling product descriptions',
+    description: 'Automatically create compelling product descriptions',
+    inputPrompt: 'Enter product details (name, category, key features):',
+    acceptsFile: false,
     steps: [
       {
-        title: 'Product Details',
-        prompt: 'Describe your product (name, category, key features):',
-        systemPrompt: 'Based on this product: "{input}", identify the top 5 benefits and selling points. Focus on customer outcomes, not just features.'
+        title: 'Analyze Product & Benefits',
+        systemPrompt: 'You are a product copywriter. Analyze this product:\n\n{input}\n\nIdentify the top 3-5 benefits and selling points. Focus on customer outcomes, not just features.'
       },
       {
-        title: 'Target Audience',
-        prompt: 'Who is your target customer? What are their pain points?',
-        systemPrompt: 'For the audience "{input}", write a compelling headline and first paragraph that speaks directly to their needs and desires. Make it emotionally resonant.'
+        title: 'Write Headline',
+        systemPrompt: 'Write a compelling headline and opening paragraph that speaks directly to customer needs and desires. Make it emotionally resonant and benefit-focused.'
       },
       {
-        title: 'Feature Highlights',
-        prompt: 'Which features are most important to highlight?',
-        systemPrompt: 'Create a features section highlighting: "{input}". Use benefit-driven language that connects features to customer value. Format with bullet points for scannability.'
+        title: 'Write Feature Section',
+        systemPrompt: 'Create a features section using benefit-driven language that connects features to customer value. Format with bullet points for scannability.'
       },
       {
-        title: 'Finalize Description',
-        prompt: 'Any unique selling points, guarantees, or urgency elements?',
-        systemPrompt: 'Complete the product description by adding: "{input}". Include a strong closing that drives action. Provide the full polished product description ready for use.'
+        title: 'Add Closing & CTA',
+        systemPrompt: 'Add a strong closing paragraph that includes any unique selling points and a compelling call-to-action that drives purchase.'
+      },
+      {
+        title: 'Format Final Description',
+        systemPrompt: 'Combine all parts into one complete, polished product description with proper formatting and flow. This is the final deliverable ready for use on product pages.'
       }
     ]
   },
-  'custom': {
-    name: 'Custom Workflow',
-    icon: '⚙️',
-    description: 'Create your own multi-step workflow',
+  'document-summary': {
+    name: 'Document Summarizer',
+    icon: '📄',
+    description: 'Automatically summarize documents with key insights',
+    inputPrompt: 'Attach your document to summarize:',
+    acceptsFile: true,
     steps: [
       {
-        title: 'Define Workflow',
-        prompt: 'What workflow would you like to create? Describe the overall goal:',
-        systemPrompt: 'Based on the workflow goal "{input}", suggest 4-6 logical steps that would help accomplish this. Structure it as a clear process.'
+        title: 'Extract Key Information',
+        systemPrompt: 'Read the following document and extract the main topics, key points, and important information:\n\n{input}'
       },
       {
-        title: 'Step 1',
-        prompt: 'Enter your prompt for step 1:',
-        systemPrompt: 'Process this step: "{input}". Provide detailed, actionable output that moves toward the workflow goal.'
+        title: 'Create Executive Summary',
+        systemPrompt: 'Based on the key information extracted, write a concise executive summary (2-3 paragraphs) that captures the essence of the document.'
       },
       {
-        title: 'Step 2',
-        prompt: 'Enter your prompt for step 2 (or type "done" if finished):',
-        systemPrompt: 'Process this step: "{input}". Build on previous results and provide detailed output.'
+        title: 'Generate Key Insights',
+        systemPrompt: 'Identify and list 5-7 key insights or takeaways from the document in bullet point format.'
       },
       {
-        title: 'Step 3',
-        prompt: 'Enter your prompt for step 3 (or type "done" if finished):',
-        systemPrompt: 'Process this step: "{input}". Continue building toward the final goal.'
-      },
-      {
-        title: 'Final Step',
-        prompt: 'Any final refinements or additional steps?',
-        systemPrompt: 'Finalize the workflow with: "{input}". Provide a complete summary of all steps and final deliverable.'
+        title: 'Format Final Summary',
+        systemPrompt: 'Combine the executive summary and key insights into one well-formatted document summary ready to share. This is the final deliverable.'
       }
     ]
   }
@@ -349,7 +341,7 @@ function switchToView(viewName) {
   }
 }
 
-// Start a workflow
+// Start a workflow - show input form
 function startWorkflow(templateId) {
   const template = WORKFLOW_TEMPLATES[templateId];
   if (!template) return;
@@ -367,10 +359,349 @@ function startWorkflow(templateId) {
     elements.exportResultsBtn.classList.add('hidden');
   }
 
-  renderWorkflowSteps();
+  renderWorkflowInputForm(template);
 }
 
-// Render workflow steps
+// Render workflow input form (entry point)
+function renderWorkflowInputForm(template) {
+  if (!elements.stepperContent) return;
+
+  elements.stepperContent.innerHTML = '';
+
+  // Workflow description
+  const descCard = document.createElement('div');
+  descCard.className = 'workflow-description-card';
+  descCard.innerHTML = `
+    <div class="workflow-icon">${template.icon}</div>
+    <h3>${template.name}</h3>
+    <p>${template.description}</p>
+  `;
+  elements.stepperContent.appendChild(descCard);
+
+  // Input form card
+  const inputCard = document.createElement('div');
+  inputCard.className = 'workflow-input-card';
+
+  const inputLabel = document.createElement('label');
+  inputLabel.className = 'workflow-input-label';
+  inputLabel.textContent = template.inputPrompt;
+
+  const inputWrapper = document.createElement('div');
+  inputWrapper.className = 'workflow-input-wrapper';
+
+  if (template.acceptsFile) {
+    // File input
+    const fileBtn = document.createElement('button');
+    fileBtn.type = 'button';
+    fileBtn.className = 'secondary attach-workflow-doc-btn';
+    fileBtn.innerHTML = '📎 Attach Document';
+    fileBtn.onclick = () => attachWorkflowDocument(inputWrapper);
+
+    const filePreview = document.createElement('div');
+    filePreview.className = 'workflow-file-preview hidden';
+    filePreview.id = 'workflowFilePreview';
+
+    inputWrapper.appendChild(fileBtn);
+    inputWrapper.appendChild(filePreview);
+  } else {
+    // Text input
+    const textarea = document.createElement('textarea');
+    textarea.className = 'workflow-input-textarea';
+    textarea.id = 'workflowInputText';
+    textarea.placeholder = 'Enter your input here...';
+    textarea.rows = 4;
+
+    inputWrapper.appendChild(textarea);
+  }
+
+  const startBtn = document.createElement('button');
+  startBtn.className = 'primary workflow-start-btn';
+  startBtn.textContent = `🚀 Run ${template.name}`;
+  startBtn.onclick = () => executeAutomatedWorkflow(template);
+
+  inputCard.appendChild(inputLabel);
+  inputCard.appendChild(inputWrapper);
+  inputCard.appendChild(startBtn);
+
+  elements.stepperContent.appendChild(inputCard);
+
+  // Steps preview
+  const stepsPreview = document.createElement('div');
+  stepsPreview.className = 'workflow-steps-preview';
+  stepsPreview.innerHTML = '<h4>Automation Steps:</h4>';
+
+  const stepsList = document.createElement('ol');
+  stepsList.className = 'workflow-steps-list';
+  template.steps.forEach((step, index) => {
+    const stepItem = document.createElement('li');
+    stepItem.textContent = step.title;
+    stepsList.appendChild(stepItem);
+  });
+
+  stepsPreview.appendChild(stepsList);
+  elements.stepperContent.appendChild(stepsPreview);
+}
+
+// Attach document for workflow
+async function attachWorkflowDocument(container) {
+  if (typeof openDialog !== 'function') {
+    alert('File dialog not available in this environment.');
+    return;
+  }
+
+  try {
+    const selected = await openDialog({
+      multiple: false,
+      filters: [
+        {
+          name: 'Documents',
+          extensions: ['pdf', 'docx', 'xlsx', 'xls', 'txt', 'md', 'markdown',
+                      'rs', 'py', 'js', 'ts', 'jsx', 'tsx', 'java', 'c', 'cpp',
+                      'h', 'hpp', 'go', 'rb', 'php', 'swift', 'kt', 'cs',
+                      'html', 'css', 'scss', 'json', 'xml', 'yaml', 'yml',
+                      'toml', 'sh', 'bash', 'sql']
+        }
+      ]
+    });
+
+    const filePath = Array.isArray(selected) ? selected[0] : selected;
+    if (!filePath) return;
+
+    try {
+      const docInfo = await invoke('parse_document', { filePath });
+
+      state.attachedDocument = {
+        path: docInfo.path,
+        name: docInfo.name,
+        text: docInfo.text,
+        summary: docInfo.summary
+      };
+
+      // Show file preview
+      const preview = container.querySelector('#workflowFilePreview');
+      if (preview) {
+        preview.innerHTML = `
+          <div class="file-preview-content">
+            <span>📄 ${docInfo.name}</span>
+            <p>${docInfo.text.length} characters</p>
+          </div>
+        `;
+        preview.classList.remove('hidden');
+      }
+    } catch (error) {
+      console.error('Failed to parse document:', error);
+      alert(`Failed to parse document: ${error?.message ?? error}`);
+      state.attachedDocument = null;
+    }
+  } catch (error) {
+    console.warn('File selection cancelled or failed:', error);
+  }
+}
+
+// Execute automated workflow - runs all steps automatically
+async function executeAutomatedWorkflow(template) {
+  // Get user input
+  let userInput = '';
+
+  if (template.acceptsFile) {
+    if (!state.attachedDocument) {
+      alert('Please attach a document first.');
+      return;
+    }
+    userInput = state.attachedDocument.text;
+  } else {
+    const inputTextarea = document.getElementById('workflowInputText');
+    if (!inputTextarea || !inputTextarea.value.trim()) {
+      alert('Please enter your input first.');
+      return;
+    }
+    userInput = inputTextarea.value.trim();
+  }
+
+  // Initialize
+  state.currentStepIndex = 0;
+  state.stepResults = [];
+
+  // Render progress view
+  renderWorkflowProgress(template);
+
+  // Execute all steps sequentially
+  for (let i = 0; i < template.steps.length; i++) {
+    state.currentStepIndex = i;
+    updateWorkflowProgress(i, 'processing');
+
+    try {
+      const result = await executeWorkflowNode(i, userInput, template.steps[i]);
+      state.stepResults[i] = result;
+      updateWorkflowProgress(i, 'completed', result);
+    } catch (error) {
+      console.error(`Workflow step ${i} failed:`, error);
+      updateWorkflowProgress(i, 'error', error.message);
+      return; // Stop workflow on error
+    }
+  }
+
+  // Workflow complete
+  showWorkflowComplete();
+}
+
+// Execute a single workflow node
+async function executeWorkflowNode(nodeIndex, initialInput, step) {
+  if (!state.activeModel) {
+    throw new Error('No model is active. Please run setup first.');
+  }
+
+  // Build the prompt for this node
+  let promptForModel;
+
+  if (nodeIndex === 0) {
+    // First node: use initial user input
+    promptForModel = step.systemPrompt.replace('{input}', initialInput);
+  } else {
+    // Subsequent nodes: pass the previous node's output
+    const previousResult = state.stepResults[nodeIndex - 1];
+    promptForModel = step.systemPrompt + '\n\n[Output from previous step]:\n' + previousResult + '\n\nNow complete your task based on the above output.';
+  }
+
+  let response = '';
+
+  // Use streaming for all backends but collect the full result
+  if (state.backend === 'python' || state.backend === 'embedded') {
+    const command = state.backend === 'embedded' ? 'embedded_chat_stream' : 'python_chat_stream';
+
+    // Collect streaming response
+    state.streamingBuffer = '';
+
+    await invoke(command, {
+      message: promptForModel,
+      history: [],  // Workflows don't use conversation history
+      sessionId: `workflow-${state.activeWorkflow}-${Date.now()}`,
+      chatsDir: state.paths?.chats || null
+    });
+
+    // Small delay to ensure all events processed
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    response = state.streamingBuffer;
+  } else {
+    // Ollama - already non-streaming
+    response = await invoke('send_chat_message', {
+      message: promptForModel,
+      model: state.activeModel,
+      history: [],
+      sessionId: `workflow-${state.activeWorkflow}-${Date.now()}`,
+      chatsDir: state.paths?.chats || null
+    });
+  }
+
+  // Clear streaming buffer
+  state.streamingBuffer = '';
+
+  return response || 'No response generated.';
+}
+
+// Render workflow progress view
+function renderWorkflowProgress(template) {
+  if (!elements.stepperContent) return;
+
+  elements.stepperContent.innerHTML = '';
+
+  const progressHeader = document.createElement('div');
+  progressHeader.className = 'workflow-progress-header';
+  progressHeader.innerHTML = `
+    <h3>🔄 Running Automation...</h3>
+    <p>Processing ${template.steps.length} steps automatically</p>
+  `;
+  elements.stepperContent.appendChild(progressHeader);
+
+  const progressContainer = document.createElement('div');
+  progressContainer.className = 'workflow-progress-container';
+  progressContainer.id = 'workflowProgressContainer';
+
+  template.steps.forEach((step, index) => {
+    const stepCard = document.createElement('div');
+    stepCard.className = 'workflow-step-progress';
+    stepCard.dataset.stepIndex = index;
+
+    stepCard.innerHTML = `
+      <div class="step-progress-header">
+        <div class="step-progress-number">${index + 1}</div>
+        <div class="step-progress-title">${step.title}</div>
+        <div class="step-progress-status" id="stepStatus${index}">⏳ Pending</div>
+      </div>
+      <div class="step-progress-result hidden" id="stepResult${index}"></div>
+    `;
+
+    progressContainer.appendChild(stepCard);
+  });
+
+  elements.stepperContent.appendChild(progressContainer);
+}
+
+// Update workflow progress for a specific step
+function updateWorkflowProgress(stepIndex, status, result = null) {
+  const statusEl = document.getElementById(`stepStatus${stepIndex}`);
+  const resultEl = document.getElementById(`stepResult${stepIndex}`);
+  const stepCard = document.querySelector(`[data-step-index="${stepIndex}"]`);
+
+  if (!statusEl || !stepCard) return;
+
+  if (status === 'processing') {
+    statusEl.textContent = '⏳ Processing...';
+    statusEl.className = 'step-progress-status processing';
+    stepCard.classList.add('active');
+  } else if (status === 'completed') {
+    statusEl.textContent = '✓ Complete';
+    statusEl.className = 'step-progress-status completed';
+    stepCard.classList.remove('active');
+    stepCard.classList.add('completed');
+
+    if (resultEl && result) {
+      resultEl.innerHTML = renderMarkdown(result);
+      resultEl.classList.remove('hidden');
+
+      // Highlight code blocks
+      if (typeof hljs !== 'undefined') {
+        resultEl.querySelectorAll('pre code').forEach((block) => {
+          if (!block.classList.contains('hljs')) {
+            hljs.highlightElement(block);
+          }
+        });
+      }
+    }
+  } else if (status === 'error') {
+    statusEl.textContent = '❌ Error';
+    statusEl.className = 'step-progress-status error';
+    stepCard.classList.remove('active');
+    stepCard.classList.add('error');
+
+    if (resultEl && result) {
+      resultEl.innerHTML = `<p class="error-message">${result}</p>`;
+      resultEl.classList.remove('hidden');
+    }
+  }
+
+  // Auto-scroll to current step
+  stepCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Show workflow completion
+function showWorkflowComplete() {
+  if (elements.exportResultsBtn) {
+    elements.exportResultsBtn.classList.remove('hidden');
+  }
+
+  const completionMsg = document.createElement('div');
+  completionMsg.className = 'workflow-complete-message';
+  completionMsg.innerHTML = `
+    <p>✅ <strong>Workflow Complete!</strong></p>
+    <p>All automation steps executed successfully. You can export the final result below.</p>
+  `;
+
+  elements.stepperContent.appendChild(completionMsg);
+}
+
+// Render workflow steps (OLD - keeping for compatibility)
 function renderWorkflowSteps() {
   if (!elements.stepperContent) return;
 
