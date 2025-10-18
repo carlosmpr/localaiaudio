@@ -116,8 +116,26 @@
               </div>
             </div>
             <div class="chat-history" id="chatHistory"></div>
+
+            <!-- Attached Document Preview -->
+            <div id="documentPreview" class="document-preview hidden">
+              <div class="document-preview-content">
+                <span class="document-icon">📄</span>
+                <div class="document-info">
+                  <strong id="documentName"></strong>
+                  <p id="documentStats"></p>
+                </div>
+                <button type="button" id="removeDocBtn" class="remove-doc-btn">×</button>
+              </div>
+            </div>
+
             <form id="chatForm">
-              <textarea id="chatInput" placeholder="Message PrivateAI..." rows="1"></textarea>
+              <div class="input-wrapper">
+                <button type="button" id="attachDocBtn" class="attach-doc-btn" title="Attach document">
+                  📎
+                </button>
+                <textarea id="chatInput" placeholder="Message PrivateAI..." rows="1"></textarea>
+              </div>
               <div class="controls">
                 <button type="button" id="stopBtn" class="secondary stop-btn hidden">Stop</button>
                 <button type="submit" id="sendBtn" class="primary" disabled>Send</button>

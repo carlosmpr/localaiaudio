@@ -12,6 +12,7 @@ mod python_engine;
 #[cfg(feature = "runtime-embedded")]
 mod embedded_runtime;
 mod storage;
+mod document_parser;
 
 use conversation::{ChatRecord, ConversationMessage, ConversationSummary};
 use model_catalog::ModelCatalogEntry;
@@ -482,6 +483,42 @@ async fn download_model(
     Ok(downloaded_path.to_string_lossy().to_string())
 }
 
+#[derive(Debug, Serialize)]
+struct DocumentInfo {
+    path: String,
+    name: String,
+    text: String,
+    summary: String,
+}
+
+#[tauri::command]
+async fn parse_document(file_path: String) -> Result<DocumentInfo, String> {
+    let path = PathBuf::from(&file_path);
+
+    if !path.exists() {
+        return Err("File does not exist".to_string());
+    }
+
+    let text = document_parser::extract_document_text(&path)
+        .map_err(|e| format!("Failed to extract text: {}", e))?;
+
+    let summary = document_parser::get_document_summary(&path, &text)
+        .map_err(|e| format!("Failed to generate summary: {}", e))?;
+
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    Ok(DocumentInfo {
+        path: file_path,
+        name,
+        text,
+        summary,
+    })
+}
+
 fn init_logging() -> Option<PathBuf> {
     use std::fs;
 
@@ -627,6 +664,7 @@ fn main() {
         list_chat_sessions,
         delete_chat_session,
         download_model,
+        parse_document,
     ]);
 
     #[cfg(all(not(feature = "runtime-ollama"), not(feature = "runtime-python"), not(feature = "runtime-embedded")))]

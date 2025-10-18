@@ -31,7 +31,8 @@ const state = {
     maxMessages: 100,  // High limit - token count is the real limit
     maxTokens: 60000,  // 60k tokens for 8GB RAM systems (backend adjusts based on RAM)
     temperature: 0.7
-  }
+  },
+  attachedDocument: null  // Holds {path, name, text, summary} when a document is attached
 };
 
 const elements = {
@@ -76,7 +77,12 @@ const elements = {
   maxMessagesContainer: document.getElementById('maxMessagesContainer'),
   themeToggle: document.getElementById('themeToggle'),
   themeIcon: document.getElementById('themeIcon'),
-  highlightTheme: document.getElementById('highlightTheme')
+  highlightTheme: document.getElementById('highlightTheme'),
+  attachDocBtn: document.getElementById('attachDocBtn'),
+  documentPreview: document.getElementById('documentPreview'),
+  documentName: document.getElementById('documentName'),
+  documentStats: document.getElementById('documentStats'),
+  removeDocBtn: document.getElementById('removeDocBtn')
 };
 
 // ========================================
@@ -1445,6 +1451,98 @@ function appendMessageBubble(role, content = '') {
   return bubble;
 }
 
+// ========================================
+// DOCUMENT HANDLING
+// ========================================
+
+async function attachDocument() {
+  if (typeof openDialog !== 'function') {
+    alert('File dialog not available in this environment.');
+    return;
+  }
+
+  try {
+    const selected = await openDialog({
+      multiple: false,
+      filters: [
+        {
+          name: 'Documents',
+          extensions: ['pdf', 'docx', 'xlsx', 'xls', 'txt', 'md', 'markdown',
+                      'rs', 'py', 'js', 'ts', 'jsx', 'tsx', 'java', 'c', 'cpp',
+                      'h', 'hpp', 'go', 'rb', 'php', 'swift', 'kt', 'cs',
+                      'html', 'css', 'scss', 'json', 'xml', 'yaml', 'yml',
+                      'toml', 'sh', 'bash', 'sql']
+        }
+      ]
+    });
+
+    const filePath = Array.isArray(selected) ? selected[0] : selected;
+    if (!filePath) return;
+
+    // Show loading state
+    showDocumentLoading(true);
+
+    try {
+      const docInfo = await invoke('parse_document', { filePath });
+
+      state.attachedDocument = {
+        path: docInfo.path,
+        name: docInfo.name,
+        text: docInfo.text,
+        summary: docInfo.summary
+      };
+
+      showDocumentPreview();
+    } catch (error) {
+      console.error('Failed to parse document:', error);
+      alert(`Failed to parse document: ${error?.message ?? error}`);
+      state.attachedDocument = null;
+    } finally {
+      showDocumentLoading(false);
+    }
+  } catch (error) {
+    console.warn('File selection cancelled or failed:', error);
+  }
+}
+
+function showDocumentLoading(loading) {
+  if (elements.attachDocBtn) {
+    elements.attachDocBtn.disabled = loading;
+    elements.attachDocBtn.textContent = loading ? '⏳' : '📎';
+  }
+}
+
+function showDocumentPreview() {
+  if (!state.attachedDocument || !elements.documentPreview) return;
+
+  const { name, text } = state.attachedDocument;
+  const charCount = text.length;
+  const wordCount = text.split(/\s+/).filter(w => w).length;
+
+  if (elements.documentName) {
+    elements.documentName.textContent = name;
+  }
+
+  if (elements.documentStats) {
+    elements.documentStats.textContent = `${charCount} chars, ${wordCount} words`;
+  }
+
+  elements.documentPreview.classList.remove('hidden');
+}
+
+function removeDocument() {
+  state.attachedDocument = null;
+  if (elements.documentPreview) {
+    elements.documentPreview.classList.add('hidden');
+  }
+  if (elements.documentName) {
+    elements.documentName.textContent = '';
+  }
+  if (elements.documentStats) {
+    elements.documentStats.textContent = '';
+  }
+}
+
 async function handleChatSubmit(event) {
   event.preventDefault();
   if (!state.activeModel) {
@@ -1452,7 +1550,18 @@ async function handleChatSubmit(event) {
     return;
   }
 
-  const message = elements.chatInput.value.trim();
+  let message = elements.chatInput.value.trim();
+  if (!message && !state.attachedDocument) return;
+
+  // If a document is attached, prepend it to the message
+  if (state.attachedDocument) {
+    const docContext = `[Document: ${state.attachedDocument.name}]\n\n${state.attachedDocument.text}\n\n---\n\n`;
+    message = docContext + (message || 'Please analyze this document.');
+
+    // Clear the attached document after sending
+    removeDocument();
+  }
+
   if (!message) return;
 
   appendMessageBubble('user', message);
@@ -1670,6 +1779,12 @@ function attachEventListeners() {
   elements.changeChatDirBtn?.addEventListener('click', () => {
     void chooseChatDirectory({ focusChat: true });
   });
+
+  // Document attachment
+  elements.attachDocBtn?.addEventListener('click', () => {
+    void attachDocument();
+  });
+  elements.removeDocBtn?.addEventListener('click', removeDocument);
 
   // Settings modal
   elements.settingsBtn?.addEventListener('click', openSettings);
