@@ -129,6 +129,41 @@ header {
   gap: 0.75rem;
 }
 
+/* View Navigation */
+.view-nav {
+  display: flex;
+  gap: 0.5rem;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 0.25rem;
+}
+
+.nav-btn {
+  background: transparent;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.nav-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.nav-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+[data-theme="dark"] .nav-btn.active {
+  color: #1f1f1f;
+}
+
 /* Theme Toggle Button */
 .theme-toggle {
   background: var(--bg-secondary);
@@ -216,6 +251,15 @@ main {
   flex: 1;
   display: flex;
   background: var(--bg-primary);
+  position: relative;
+}
+
+main > section {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
 
 /* ========================================
@@ -870,9 +914,9 @@ body.chat-mode #chatView {
   color: #cf222e;
 }
 
-/* Chat Form - Always at bottom, never moves */
+/* Chat Form - Only visible in chat view */
 #chatForm {
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 0.75rem;
   padding: 1.5rem 2rem;
@@ -881,6 +925,10 @@ body.chat-mode #chatView {
   flex-grow: 0;
   background: var(--bg-primary);
   z-index: 10;
+}
+
+#chatView.visible #chatForm {
+  display: flex;
 }
 
 .input-wrapper {
@@ -1246,4 +1294,355 @@ body.chat-mode #chatView {
 ::selection {
   background: var(--accent-bg);
   color: var(--text-primary);
+}
+
+/* ========================================
+   STEP PROMPTER VIEW
+   ======================================== */
+
+#stepperView {
+  width: 100%;
+  height: 100%;
+  display: none;
+}
+
+#stepperView.visible {
+  display: block;
+}
+
+.stepper-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: calc(100vh - 60px);
+  max-height: calc(100vh - 60px);
+  overflow: hidden;
+}
+
+/* Workflow Sidebar */
+.workflow-sidebar {
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-light);
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+}
+
+.workflow-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.workflow-header h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.templates-section h3 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+}
+
+.template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.template-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.template-card:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-medium);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.template-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.template-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* Stepper Main Area */
+.stepper-main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.stepper-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 2rem;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.stepper-header h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.stepper-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem;
+}
+
+.stepper-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+/* Step Cards */
+.step-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  transition: all 0.2s ease;
+}
+
+.step-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.step-card.completed {
+  opacity: 0.7;
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.step-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.step-card.active .step-number {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+[data-theme="dark"] .step-card.active .step-number {
+  color: #1f1f1f;
+}
+
+.step-card.completed .step-number {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.step-card.completed .step-number::after {
+  content: '✓';
+  color: white;
+}
+
+[data-theme="dark"] .step-card.completed .step-number::after {
+  color: #1f1f1f;
+}
+
+.step-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.step-body {
+  margin-left: 48px;
+}
+
+.step-prompt {
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.step-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.step-input {
+  width: 100%;
+  min-height: 80px;
+  padding: 0.875rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  transition: all 0.2s ease;
+}
+
+.step-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.step-result {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.6;
+  font-size: 0.9375rem;
+}
+
+.step-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.step-actions button {
+  flex: 1;
+}
+
+/* Progress Indicator */
+.workflow-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 2rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.progress-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-tertiary);
+  font-size: 0.875rem;
+}
+
+.progress-step.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.progress-step.completed {
+  color: var(--text-secondary);
+}
+
+.progress-separator {
+  color: var(--border-medium);
+  margin: 0 0.25rem;
+}
+
+/* Workflow Status Messages */
+.loading-indicator {
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  font-style: italic;
+  margin-bottom: 0.75rem;
+}
+
+.workflow-complete-message {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(16, 185, 129, 0.1));
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-top: 2rem;
+  text-align: center;
+}
+
+.workflow-complete-message p {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.error-message {
+  color: #cf222e;
+  background: rgba(207, 34, 46, 0.1);
+  border: 1px solid rgba(207, 34, 46, 0.3);
+  padding: 0.875rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+/* Step Result Content */
+.step-result-content {
+  margin-top: 0.75rem;
+}
+
+.step-result-content h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+}
+
+/* Step Content Inner */
+.step-content-inner {
+  width: 100%;
+}
+
+.step-input-wrapper {
+  margin-top: 1rem;
 }

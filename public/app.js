@@ -32,7 +32,14 @@ const state = {
     maxTokens: 60000,  // 60k tokens for 8GB RAM systems (backend adjusts based on RAM)
     temperature: 0.7
   },
-  attachedDocument: null  // Holds {path, name, text, summary} when a document is attached
+  attachedDocument: null,  // Holds {path, name, text, summary} when a document is attached
+
+  // Step Prompter state
+  currentView: 'chat',  // 'chat' or 'stepper'
+  activeWorkflow: null,  // Current workflow being executed
+  workflowSteps: [],     // Steps for current workflow
+  currentStepIndex: 0,   // Current step being executed
+  stepResults: []        // Results from completed steps
 };
 
 const elements = {
@@ -82,7 +89,17 @@ const elements = {
   documentPreview: document.getElementById('documentPreview'),
   documentName: document.getElementById('documentName'),
   documentStats: document.getElementById('documentStats'),
-  removeDocBtn: document.getElementById('removeDocBtn')
+  removeDocBtn: document.getElementById('removeDocBtn'),
+
+  // Step Prompter elements
+  chatViewNav: document.getElementById('chatViewNav'),
+  stepperViewNav: document.getElementById('stepperViewNav'),
+  stepperView: document.getElementById('stepperView'),
+  workflowTitle: document.getElementById('workflowTitle'),
+  stepperContent: document.getElementById('stepperContent'),
+  newWorkflowBtn: document.getElementById('newWorkflowBtn'),
+  exportResultsBtn: document.getElementById('exportResultsBtn'),
+  templateCards: document.querySelectorAll('.template-card')
 };
 
 // ========================================
@@ -133,6 +150,518 @@ const TAURI = window.__TAURI__ || {};
 const invoke = TAURI.tauri?.invoke;
 const listen = TAURI.event?.listen;
 const openDialog = TAURI.dialog?.open;
+
+// ========================================
+// STEP PROMPTER / WORKFLOW SYSTEM
+// ========================================
+
+const WORKFLOW_TEMPLATES = {
+  'social-media': {
+    name: 'Social Media Post',
+    icon: '📱',
+    description: 'Create engaging social media content',
+    steps: [
+      {
+        title: 'Define Topic',
+        prompt: 'What is the main topic or message for your social media post?',
+        systemPrompt: 'Based on the topic "{input}", suggest 3-5 key angles or hooks that would make this engaging for social media. Be specific and creative.'
+      },
+      {
+        title: 'Choose Angle',
+        prompt: 'Which angle do you want to focus on? (You can also write your own)',
+        systemPrompt: 'For the angle "{input}", write 3 different caption options with varying tones: professional, casual, and humorous. Each should be 2-3 sentences and include relevant hashtags.'
+      },
+      {
+        title: 'Refine Caption',
+        prompt: 'Which caption style do you prefer? (or provide feedback for refinement)',
+        systemPrompt: 'Refine the caption based on this feedback: "{input}". Provide the final polished version optimized for engagement, along with 5-10 relevant hashtags.'
+      },
+      {
+        title: 'Call-to-Action',
+        prompt: 'What action do you want your audience to take?',
+        systemPrompt: 'Add a compelling call-to-action to the caption that encourages: "{input}". Provide the complete final post ready to publish.'
+      }
+    ]
+  },
+  'blog-post': {
+    name: 'Blog Post',
+    icon: '📝',
+    description: 'Write a complete blog post with structure',
+    steps: [
+      {
+        title: 'Blog Topic',
+        prompt: 'What is your blog post about?',
+        systemPrompt: 'For the topic "{input}", suggest 5 compelling blog post titles that would attract readers. Make them specific and engaging.'
+      },
+      {
+        title: 'Create Outline',
+        prompt: 'Which title do you like? (or create your own)',
+        systemPrompt: 'Create a detailed outline for a blog post titled "{input}". Include: introduction hook, 4-6 main sections with subpoints, and conclusion. Make it comprehensive.'
+      },
+      {
+        title: 'Write Introduction',
+        prompt: 'Any specific points to emphasize in the intro? (or just say "continue")',
+        systemPrompt: 'Write an engaging introduction (2-3 paragraphs) for the blog post. Context: {input}. Hook the reader, establish credibility, and preview what they\'ll learn.'
+      },
+      {
+        title: 'Write Body',
+        prompt: 'Any additional details or examples to include? (or say "continue")',
+        systemPrompt: 'Write the main body sections of the blog post. Context: {input}. Make it informative, well-structured with headings, and include practical examples.'
+      },
+      {
+        title: 'Write Conclusion',
+        prompt: 'What key takeaway or call-to-action? (or say "continue")',
+        systemPrompt: 'Write a strong conclusion for the blog post. Context: {input}. Summarize key points, provide actionable takeaways, and end with an engaging call-to-action.'
+      }
+    ]
+  },
+  'email': {
+    name: 'Email Campaign',
+    icon: '✉️',
+    description: 'Draft professional email campaigns',
+    steps: [
+      {
+        title: 'Campaign Goal',
+        prompt: 'What is the goal of this email campaign?',
+        systemPrompt: 'For the goal "{input}", suggest 5 compelling subject lines that would achieve high open rates. Vary the approaches (urgency, curiosity, value-focused, etc.).'
+      },
+      {
+        title: 'Select Subject',
+        prompt: 'Choose a subject line or write your own:',
+        systemPrompt: 'Write an attention-grabbing opening paragraph for an email with subject: "{input}". Hook the reader immediately and establish relevance.'
+      },
+      {
+        title: 'Email Body',
+        prompt: 'What key benefits or information should the email convey?',
+        systemPrompt: 'Write the main body of the email that communicates: "{input}". Use persuasive copywriting, clear benefits, and maintain reader engagement.'
+      },
+      {
+        title: 'Call-to-Action',
+        prompt: 'What specific action should recipients take?',
+        systemPrompt: 'Create a compelling call-to-action section for: "{input}". Include CTA button text, supporting copy, and a sense of urgency or value. Provide the complete final email.'
+      }
+    ]
+  },
+  'product-desc': {
+    name: 'Product Description',
+    icon: '🛍️',
+    description: 'Create compelling product descriptions',
+    steps: [
+      {
+        title: 'Product Details',
+        prompt: 'Describe your product (name, category, key features):',
+        systemPrompt: 'Based on this product: "{input}", identify the top 5 benefits and selling points. Focus on customer outcomes, not just features.'
+      },
+      {
+        title: 'Target Audience',
+        prompt: 'Who is your target customer? What are their pain points?',
+        systemPrompt: 'For the audience "{input}", write a compelling headline and first paragraph that speaks directly to their needs and desires. Make it emotionally resonant.'
+      },
+      {
+        title: 'Feature Highlights',
+        prompt: 'Which features are most important to highlight?',
+        systemPrompt: 'Create a features section highlighting: "{input}". Use benefit-driven language that connects features to customer value. Format with bullet points for scannability.'
+      },
+      {
+        title: 'Finalize Description',
+        prompt: 'Any unique selling points, guarantees, or urgency elements?',
+        systemPrompt: 'Complete the product description by adding: "{input}". Include a strong closing that drives action. Provide the full polished product description ready for use.'
+      }
+    ]
+  },
+  'custom': {
+    name: 'Custom Workflow',
+    icon: '⚙️',
+    description: 'Create your own multi-step workflow',
+    steps: [
+      {
+        title: 'Define Workflow',
+        prompt: 'What workflow would you like to create? Describe the overall goal:',
+        systemPrompt: 'Based on the workflow goal "{input}", suggest 4-6 logical steps that would help accomplish this. Structure it as a clear process.'
+      },
+      {
+        title: 'Step 1',
+        prompt: 'Enter your prompt for step 1:',
+        systemPrompt: 'Process this step: "{input}". Provide detailed, actionable output that moves toward the workflow goal.'
+      },
+      {
+        title: 'Step 2',
+        prompt: 'Enter your prompt for step 2 (or type "done" if finished):',
+        systemPrompt: 'Process this step: "{input}". Build on previous results and provide detailed output.'
+      },
+      {
+        title: 'Step 3',
+        prompt: 'Enter your prompt for step 3 (or type "done" if finished):',
+        systemPrompt: 'Process this step: "{input}". Continue building toward the final goal.'
+      },
+      {
+        title: 'Final Step',
+        prompt: 'Any final refinements or additional steps?',
+        systemPrompt: 'Finalize the workflow with: "{input}". Provide a complete summary of all steps and final deliverable.'
+      }
+    ]
+  }
+};
+
+// View navigation
+function switchToView(viewName) {
+  // Don't allow view switching if model is not active (setup not complete)
+  if (!state.activeModel && viewName !== 'setup') {
+    console.log('Cannot switch views - setup not complete');
+    return;
+  }
+
+  state.currentView = viewName;
+
+  if (viewName === 'chat') {
+    // Show chat, hide stepper and setup
+    elements.setupView?.classList.add('hidden');
+    elements.setupView?.classList.remove('visible');
+    elements.chatView?.classList.remove('hidden');
+    elements.chatView?.classList.add('visible');
+    elements.stepperView?.classList.add('hidden');
+    elements.stepperView?.classList.remove('visible');
+
+    elements.chatViewNav?.classList.add('active');
+    elements.stepperViewNav?.classList.remove('active');
+  } else if (viewName === 'stepper') {
+    // Show stepper, hide chat and setup
+    elements.setupView?.classList.add('hidden');
+    elements.setupView?.classList.remove('visible');
+    elements.chatView?.classList.add('hidden');
+    elements.chatView?.classList.remove('visible');
+    elements.stepperView?.classList.remove('hidden');
+    elements.stepperView?.classList.add('visible');
+
+    elements.chatViewNav?.classList.remove('active');
+    elements.stepperViewNav?.classList.add('active');
+  } else if (viewName === 'setup') {
+    // Show setup, hide chat and stepper
+    elements.setupView?.classList.add('visible');
+    elements.setupView?.classList.remove('hidden');
+    elements.chatView?.classList.add('hidden');
+    elements.chatView?.classList.remove('visible');
+    elements.stepperView?.classList.add('hidden');
+    elements.stepperView?.classList.remove('visible');
+
+    elements.chatViewNav?.classList.remove('active');
+    elements.stepperViewNav?.classList.remove('active');
+  }
+}
+
+// Start a workflow
+function startWorkflow(templateId) {
+  const template = WORKFLOW_TEMPLATES[templateId];
+  if (!template) return;
+
+  state.activeWorkflow = templateId;
+  state.workflowSteps = JSON.parse(JSON.stringify(template.steps)); // Deep copy
+  state.currentStepIndex = 0;
+  state.stepResults = [];
+
+  if (elements.workflowTitle) {
+    elements.workflowTitle.textContent = template.name;
+  }
+
+  if (elements.exportResultsBtn) {
+    elements.exportResultsBtn.classList.add('hidden');
+  }
+
+  renderWorkflowSteps();
+}
+
+// Render workflow steps
+function renderWorkflowSteps() {
+  if (!elements.stepperContent) return;
+
+  elements.stepperContent.innerHTML = '';
+
+  state.workflowSteps.forEach((step, index) => {
+    const stepCard = document.createElement('div');
+    stepCard.className = 'step-card';
+    stepCard.dataset.stepIndex = index;
+
+    if (index === state.currentStepIndex) {
+      stepCard.classList.add('active');
+    } else if (index < state.currentStepIndex) {
+      stepCard.classList.add('completed');
+    }
+
+    const stepNumber = document.createElement('div');
+    stepNumber.className = 'step-number';
+    stepNumber.textContent = index + 1;
+
+    const stepContent = document.createElement('div');
+    stepContent.className = 'step-content-inner';
+
+    const stepTitle = document.createElement('h3');
+    stepTitle.className = 'step-title';
+    stepTitle.textContent = step.title;
+
+    const stepPrompt = document.createElement('p');
+    stepPrompt.className = 'step-prompt';
+    stepPrompt.textContent = step.prompt;
+
+    stepContent.appendChild(stepTitle);
+    stepContent.appendChild(stepPrompt);
+
+    // If this step is active, show input field
+    if (index === state.currentStepIndex) {
+      const inputWrapper = document.createElement('div');
+      inputWrapper.className = 'step-input-wrapper';
+
+      const textarea = document.createElement('textarea');
+      textarea.className = 'step-input';
+      textarea.placeholder = 'Enter your response...';
+      textarea.rows = 3;
+      textarea.dataset.stepIndex = index;
+
+      const buttonWrapper = document.createElement('div');
+      buttonWrapper.className = 'step-actions';
+
+      const generateBtn = document.createElement('button');
+      generateBtn.className = 'primary';
+      generateBtn.textContent = 'Generate';
+      generateBtn.onclick = () => executeWorkflowStep(index, textarea.value);
+
+      buttonWrapper.appendChild(generateBtn);
+      inputWrapper.appendChild(textarea);
+      inputWrapper.appendChild(buttonWrapper);
+      stepContent.appendChild(inputWrapper);
+    }
+
+    // If this step has results, show them
+    if (state.stepResults[index]) {
+      const resultWrapper = document.createElement('div');
+      resultWrapper.className = 'step-result';
+
+      const resultLabel = document.createElement('h4');
+      resultLabel.textContent = 'Result:';
+
+      const resultContent = document.createElement('div');
+      resultContent.className = 'step-result-content markdown-content';
+      resultContent.innerHTML = renderMarkdown(state.stepResults[index]);
+
+      // Highlight code blocks
+      requestAnimationFrame(() => {
+        if (typeof hljs !== 'undefined') {
+          resultContent.querySelectorAll('pre code').forEach((block) => {
+            if (!block.classList.contains('hljs')) {
+              hljs.highlightElement(block);
+            }
+          });
+        }
+      });
+
+      resultWrapper.appendChild(resultLabel);
+      resultWrapper.appendChild(resultContent);
+      stepContent.appendChild(resultWrapper);
+    }
+
+    stepCard.appendChild(stepNumber);
+    stepCard.appendChild(stepContent);
+    elements.stepperContent.appendChild(stepCard);
+  });
+}
+
+// Execute a workflow step by calling the model (non-streaming, node-by-node)
+async function executeWorkflowStep(stepIndex, userInput) {
+  if (!state.activeModel) {
+    alert('No model is active. Please run setup first.');
+    return;
+  }
+
+  if (!userInput.trim()) {
+    alert('Please enter a response first.');
+    return;
+  }
+
+  const step = state.workflowSteps[stepIndex];
+  if (!step) return;
+
+  // Build the prompt for the model - pass result from previous node
+  let promptForModel = step.systemPrompt.replace('{input}', userInput);
+
+  // For workflows, we pass the FULL result from the previous step as context
+  // This creates a proper node-by-node chain where each node builds on the previous
+  if (stepIndex > 0 && state.stepResults[stepIndex - 1]) {
+    const previousResult = state.stepResults[stepIndex - 1];
+    promptForModel = `[Context from previous step]:\n${previousResult}\n\n[Current task]:\n${promptForModel}`;
+  }
+
+  // Disable the button and show loading state
+  const stepCard = elements.stepperContent.querySelector(`[data-step-index="${stepIndex}"]`);
+  const generateBtn = stepCard?.querySelector('button.primary');
+  const textarea = stepCard?.querySelector('textarea.step-input');
+
+  if (generateBtn) {
+    generateBtn.disabled = true;
+    generateBtn.textContent = 'Generating...';
+  }
+  if (textarea) {
+    textarea.disabled = true;
+  }
+
+  // Show a loading indicator in the step result area
+  let resultWrapper = stepCard?.querySelector('.step-result');
+  if (!resultWrapper) {
+    resultWrapper = document.createElement('div');
+    resultWrapper.className = 'step-result';
+    const stepContent = stepCard?.querySelector('.step-content-inner');
+    if (stepContent) {
+      stepContent.appendChild(resultWrapper);
+    }
+  }
+  resultWrapper.innerHTML = '<p class="loading-indicator">⏳ Processing node...</p>';
+
+  try {
+    let response = '';
+
+    // Use streaming for all backends but collect the full result
+    if (state.backend === 'python' || state.backend === 'embedded') {
+      const command = state.backend === 'embedded' ? 'embedded_chat_stream' : 'python_chat_stream';
+
+      // Collect streaming response
+      state.streamingBuffer = '';
+
+      // Set up a temporary listener to collect the stream
+      const streamingComplete = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Workflow step timed out')), 120000); // 2 min timeout
+
+        if (typeof listen === 'function') {
+          const unlisten = listen('chat-stream', (event) => {
+            if (event?.payload?.content) {
+              state.streamingBuffer = event.payload.content;
+              // Update the loading indicator with partial result
+              resultWrapper.innerHTML = `<p class="loading-indicator">⏳ Processing...</p><div class="step-result-content markdown-content">${renderMarkdown(state.streamingBuffer)}</div>`;
+            }
+          });
+
+          // Also listen for completion
+          const unlistenDone = state.backend === 'embedded' ? listen('embedded-stream-done', () => {
+            clearTimeout(timeout);
+            resolve();
+          }) : null;
+        }
+      });
+
+      await invoke(command, {
+        message: promptForModel,
+        history: [],  // Workflows don't use conversation history - they use node chaining
+        sessionId: `workflow-${state.activeWorkflow}-${Date.now()}`,
+        chatsDir: state.paths?.chats || null
+      });
+
+      // For non-embedded, the invoke completes when streaming is done
+      if (state.backend !== 'embedded') {
+        await new Promise(resolve => setTimeout(resolve, 500)); // Small delay to ensure all events processed
+      }
+
+      response = state.streamingBuffer;
+    } else {
+      // Ollama - already non-streaming
+      response = await invoke('send_chat_message', {
+        message: promptForModel,
+        model: state.activeModel,
+        history: [],  // Workflows don't use conversation history
+        sessionId: `workflow-${state.activeWorkflow}-${Date.now()}`,
+        chatsDir: state.paths?.chats || null
+      });
+    }
+
+    // Store the result - this becomes input for the next node
+    state.stepResults[stepIndex] = response || 'No response generated.';
+
+    // Clear streaming buffer
+    state.streamingBuffer = '';
+
+    // Move to next step
+    if (stepIndex < state.workflowSteps.length - 1) {
+      state.currentStepIndex = stepIndex + 1;
+      renderWorkflowSteps();
+    } else {
+      // Workflow complete - show final result
+      state.currentStepIndex = stepIndex + 1;
+      renderWorkflowSteps();
+
+      if (elements.exportResultsBtn) {
+        elements.exportResultsBtn.classList.remove('hidden');
+      }
+
+      // Show completion message
+      const completionMsg = document.createElement('div');
+      completionMsg.className = 'workflow-complete-message';
+      completionMsg.innerHTML = '<p>✅ <strong>Workflow Complete!</strong> All nodes processed successfully. You can export the results below.</p>';
+      elements.stepperContent.appendChild(completionMsg);
+    }
+  } catch (error) {
+    console.error('Failed to execute workflow step:', error);
+
+    // Show error in the result area
+    resultWrapper.innerHTML = `<p class="error-message">❌ Error: ${error?.message ?? error}</p>`;
+
+    if (generateBtn) {
+      generateBtn.disabled = false;
+      generateBtn.textContent = 'Retry';
+    }
+    if (textarea) {
+      textarea.disabled = false;
+    }
+  }
+}
+
+// Export workflow results
+function exportWorkflowResults() {
+  if (!state.activeWorkflow || state.stepResults.length === 0) {
+    alert('No results to export.');
+    return;
+  }
+
+  const template = WORKFLOW_TEMPLATES[state.activeWorkflow];
+  let exportText = `# ${template.name}\n\n`;
+  exportText += `Generated: ${new Date().toLocaleString()}\n\n`;
+  exportText += `---\n\n`;
+
+  state.workflowSteps.forEach((step, index) => {
+    if (state.stepResults[index]) {
+      exportText += `## ${step.title}\n\n`;
+      exportText += `${state.stepResults[index]}\n\n`;
+      exportText += `---\n\n`;
+    }
+  });
+
+  // Copy to clipboard
+  navigator.clipboard.writeText(exportText).then(() => {
+    alert('Results copied to clipboard!');
+  }).catch((error) => {
+    console.error('Failed to copy:', error);
+    alert('Failed to copy to clipboard. See console for details.');
+  });
+}
+
+// Reset workflow
+function resetWorkflow() {
+  state.activeWorkflow = null;
+  state.workflowSteps = [];
+  state.currentStepIndex = 0;
+  state.stepResults = [];
+
+  if (elements.workflowTitle) {
+    elements.workflowTitle.textContent = 'Select a workflow to begin';
+  }
+
+  if (elements.exportResultsBtn) {
+    elements.exportResultsBtn.classList.add('hidden');
+  }
+
+  if (elements.stepperContent) {
+    elements.stepperContent.innerHTML = `
+      <div class="stepper-empty">
+        <p>👈 Choose a template from the sidebar to start a guided workflow</p>
+      </div>
+    `;
+  }
+}
 
 const stepsOrder = ['scan', 'storage', 'install', 'model', 'complete'];
 const STEP_LABELS = {
@@ -185,19 +714,33 @@ function showError(message) {
 
 function toggleViews(showChat) {
   if (showChat) {
-    elements.setupView.classList.add('hidden');
-    elements.setupView.classList.remove('visible');
-    elements.chatView.classList.add('visible');
-    elements.chatView.classList.remove('hidden');
-    elements.chatForm.style.display = 'flex';
+    // Setup complete - switch to chat view
+    switchToView('chat');
+    // Remove inline style - let CSS handle visibility
+    if (elements.chatForm && elements.chatForm.style.display) {
+      elements.chatForm.style.display = '';
+    }
     document.body.classList.add('chat-mode');
+
+    // Show navigation buttons
+    const viewNav = document.querySelector('.view-nav');
+    if (viewNav) {
+      viewNav.style.display = 'flex';
+    }
   } else {
-    elements.setupView.classList.add('visible');
-    elements.setupView.classList.remove('hidden');
-    elements.chatView.classList.add('hidden');
-    elements.chatView.classList.remove('visible');
-    elements.chatForm.style.display = 'none';
+    // Show setup view
+    switchToView('setup');
+    // Remove inline style - let CSS handle visibility
+    if (elements.chatForm && elements.chatForm.style.display) {
+      elements.chatForm.style.display = '';
+    }
     document.body.classList.remove('chat-mode');
+
+    // Hide navigation buttons during setup
+    const viewNav = document.querySelector('.view-nav');
+    if (viewNav) {
+      viewNav.style.display = 'none';
+    }
   }
 }
 
@@ -1811,7 +2354,10 @@ async function resetWizard() {
   elements.startSetupBtn.disabled = false;
   state.streamingBubble = null;
   state.streamingBuffer = '';
+
+  // Reset to setup view (this will hide navigation)
   toggleViews(false);
+
   setDefaultModelOptions();
   updateBackendAvailability();
   state.modelPath = null;
@@ -1864,6 +2410,28 @@ function attachEventListeners() {
     void attachDocument();
   });
   elements.removeDocBtn?.addEventListener('click', removeDocument);
+
+  // Step Prompter navigation
+  elements.chatViewNav?.addEventListener('click', () => {
+    switchToView('chat');
+  });
+  elements.stepperViewNav?.addEventListener('click', () => {
+    switchToView('stepper');
+  });
+
+  // Workflow templates
+  elements.templateCards.forEach((card) => {
+    card.addEventListener('click', () => {
+      const templateId = card.dataset.template;
+      if (templateId) {
+        startWorkflow(templateId);
+      }
+    });
+  });
+
+  // Workflow controls
+  elements.newWorkflowBtn?.addEventListener('click', resetWorkflow);
+  elements.exportResultsBtn?.addEventListener('click', exportWorkflowResults);
 
   // Settings modal
   elements.settingsBtn?.addEventListener('click', openSettings);
