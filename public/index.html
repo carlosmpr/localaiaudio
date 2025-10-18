@@ -258,6 +258,47 @@
       </div>
     </div>
 
+    <!-- Custom Workflow Builder Modal -->
+    <div id="workflowBuilderModal" class="modal hidden">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h2>Create Custom Workflow</h2>
+          <button type="button" id="closeWorkflowBuilderBtn" class="close-btn">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="workflow-builder-section">
+            <h3>Workflow Details</h3>
+            <div class="setting-item">
+              <label for="workflowName">Workflow Name</label>
+              <input type="text" id="workflowName" placeholder="E.g., Blog Post Generator" />
+            </div>
+            <div class="setting-item">
+              <label for="workflowDescription">Description</label>
+              <input type="text" id="workflowDescription" placeholder="Brief description of this workflow" />
+            </div>
+            <div class="setting-item">
+              <label for="workflowIcon">Icon (emoji)</label>
+              <input type="text" id="workflowIcon" placeholder="📝" maxlength="2" />
+            </div>
+          </div>
+
+          <div class="workflow-builder-section">
+            <div class="workflow-steps-header">
+              <h3>Workflow Steps</h3>
+              <button type="button" id="addStepBtn" class="secondary small">+ Add Step</button>
+            </div>
+            <div id="workflowStepsBuilder" class="workflow-steps-builder">
+              <!-- Steps will be added here dynamically -->
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="saveWorkflowBtn" class="primary">Create Workflow</button>
+          <button type="button" id="cancelWorkflowBuilderBtn" class="secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="/app.js"></script>

@@ -99,7 +99,18 @@ const elements = {
   stepperContent: document.getElementById('stepperContent'),
   newWorkflowBtn: document.getElementById('newWorkflowBtn'),
   exportResultsBtn: document.getElementById('exportResultsBtn'),
-  templateCards: document.querySelectorAll('.template-card')
+  templateCards: document.querySelectorAll('.template-card'),
+
+  // Workflow Builder elements
+  workflowBuilderModal: document.getElementById('workflowBuilderModal'),
+  closeWorkflowBuilderBtn: document.getElementById('closeWorkflowBuilderBtn'),
+  cancelWorkflowBuilderBtn: document.getElementById('cancelWorkflowBuilderBtn'),
+  saveWorkflowBtn: document.getElementById('saveWorkflowBtn'),
+  workflowName: document.getElementById('workflowName'),
+  workflowDescription: document.getElementById('workflowDescription'),
+  workflowIcon: document.getElementById('workflowIcon'),
+  addStepBtn: document.getElementById('addStepBtn'),
+  workflowStepsBuilder: document.getElementById('workflowStepsBuilder')
 };
 
 // ========================================
@@ -741,23 +752,46 @@ function renderWorkflowSteps() {
       const inputWrapper = document.createElement('div');
       inputWrapper.className = 'step-input-wrapper';
 
-      const textarea = document.createElement('textarea');
-      textarea.className = 'step-input';
-      textarea.placeholder = 'Enter your response...';
-      textarea.rows = 3;
-      textarea.dataset.stepIndex = index;
+      // Check if this step requires user input
+      const requiresUserInput = step.systemPrompt && step.systemPrompt.includes('{input}');
 
-      const buttonWrapper = document.createElement('div');
-      buttonWrapper.className = 'step-actions';
+      if (requiresUserInput) {
+        const textarea = document.createElement('textarea');
+        textarea.className = 'step-input';
+        textarea.placeholder = 'Enter your response...';
+        textarea.rows = 3;
+        textarea.dataset.stepIndex = index;
 
-      const generateBtn = document.createElement('button');
-      generateBtn.className = 'primary';
-      generateBtn.textContent = 'Generate';
-      generateBtn.onclick = () => executeWorkflowStep(index, textarea.value);
+        const buttonWrapper = document.createElement('div');
+        buttonWrapper.className = 'step-actions';
 
-      buttonWrapper.appendChild(generateBtn);
-      inputWrapper.appendChild(textarea);
-      inputWrapper.appendChild(buttonWrapper);
+        const generateBtn = document.createElement('button');
+        generateBtn.className = 'primary';
+        generateBtn.textContent = 'Generate';
+        generateBtn.onclick = () => executeWorkflowStep(index, textarea.value);
+
+        buttonWrapper.appendChild(generateBtn);
+        inputWrapper.appendChild(textarea);
+        inputWrapper.appendChild(buttonWrapper);
+      } else {
+        // For steps that don't require input, show just the button
+        const buttonWrapper = document.createElement('div');
+        buttonWrapper.className = 'step-actions';
+
+        const generateBtn = document.createElement('button');
+        generateBtn.className = 'primary';
+        generateBtn.textContent = 'Generate';
+        generateBtn.onclick = () => executeWorkflowStep(index, '');
+
+        const helpText = document.createElement('p');
+        helpText.className = 'step-help-text';
+        helpText.textContent = 'This step will use the output from the previous step.';
+
+        inputWrapper.appendChild(helpText);
+        buttonWrapper.appendChild(generateBtn);
+        inputWrapper.appendChild(buttonWrapper);
+      }
+
       stepContent.appendChild(inputWrapper);
     }
 
@@ -802,16 +836,25 @@ async function executeWorkflowStep(stepIndex, userInput) {
     return;
   }
 
-  if (!userInput.trim()) {
+  const step = state.workflowSteps[stepIndex];
+  if (!step) return;
+
+  // Check if this step requires user input (has {input} placeholder)
+  const requiresUserInput = step.systemPrompt.includes('{input}');
+
+  // For steps that require user input, validate it's provided
+  if (requiresUserInput && !userInput.trim()) {
     alert('Please enter a response first.');
     return;
   }
 
-  const step = state.workflowSteps[stepIndex];
-  if (!step) return;
+  // Build the prompt for the model
+  let promptForModel = step.systemPrompt;
 
-  // Build the prompt for the model - pass result from previous node
-  let promptForModel = step.systemPrompt.replace('{input}', userInput);
+  // Replace {input} placeholder if present and we have user input
+  if (requiresUserInput && userInput) {
+    promptForModel = promptForModel.replace('{input}', userInput);
+  }
 
   // For workflows, we pass the FULL result from the previous step as context
   // This creates a proper node-by-node chain where each node builds on the previous
@@ -968,6 +1011,250 @@ function exportWorkflowResults() {
     console.error('Failed to copy:', error);
     alert('Failed to copy to clipboard. See console for details.');
   });
+}
+
+// Custom workflow builder state
+let customWorkflowSteps = [];
+
+// Open workflow builder modal
+function openWorkflowBuilder() {
+  customWorkflowSteps = [];
+
+  if (elements.workflowName) elements.workflowName.value = '';
+  if (elements.workflowDescription) elements.workflowDescription.value = '';
+  if (elements.workflowIcon) elements.workflowIcon.value = '📝';
+  if (elements.workflowStepsBuilder) elements.workflowStepsBuilder.innerHTML = '';
+
+  // Add first step by default
+  addWorkflowStep();
+
+  if (elements.workflowBuilderModal) {
+    elements.workflowBuilderModal.classList.remove('hidden');
+  }
+}
+
+// Close workflow builder modal
+function closeWorkflowBuilder() {
+  if (elements.workflowBuilderModal) {
+    elements.workflowBuilderModal.classList.add('hidden');
+  }
+  customWorkflowSteps = [];
+}
+
+// Add a new workflow step
+function addWorkflowStep() {
+  const stepIndex = customWorkflowSteps.length;
+  const step = {
+    title: '',
+    systemPrompt: ''
+  };
+
+  customWorkflowSteps.push(step);
+
+  const stepCard = document.createElement('div');
+  stepCard.className = 'workflow-step-builder-card';
+  stepCard.dataset.stepIndex = stepIndex;
+
+  stepCard.innerHTML = `
+    <div class="workflow-step-header">
+      <h4>Step ${stepIndex + 1}</h4>
+      ${stepIndex > 0 ? '<button type="button" class="remove-step-btn" onclick="removeWorkflowStep(' + stepIndex + ')">Remove</button>' : ''}
+    </div>
+    <div class="setting-item">
+      <label>Step Title</label>
+      <input type="text" class="step-title-input" data-step="${stepIndex}" placeholder="E.g., Generate Outline" />
+    </div>
+    <div class="setting-item">
+      <label>System Prompt</label>
+      <textarea class="step-prompt-input" data-step="${stepIndex}" placeholder="Instructions for the AI. Use {input} to reference user input."></textarea>
+      <p class="setting-hint">Use {input} as a placeholder for user input. If you don't include {input}, the step will automatically use the previous step's output.</p>
+    </div>
+  `;
+
+  if (elements.workflowStepsBuilder) {
+    elements.workflowStepsBuilder.appendChild(stepCard);
+  }
+
+  // Add event listeners for this step
+  const titleInput = stepCard.querySelector('.step-title-input');
+  const promptInput = stepCard.querySelector('.step-prompt-input');
+
+  if (titleInput) {
+    titleInput.addEventListener('input', (e) => {
+      customWorkflowSteps[stepIndex].title = e.target.value;
+    });
+  }
+
+  if (promptInput) {
+    promptInput.addEventListener('input', (e) => {
+      customWorkflowSteps[stepIndex].systemPrompt = e.target.value;
+    });
+  }
+}
+
+// Remove a workflow step
+function removeWorkflowStep(index) {
+  customWorkflowSteps.splice(index, 1);
+  renderWorkflowStepsBuilder();
+}
+
+// Re-render workflow steps builder
+function renderWorkflowStepsBuilder() {
+  if (!elements.workflowStepsBuilder) return;
+
+  elements.workflowStepsBuilder.innerHTML = '';
+
+  const tempSteps = [...customWorkflowSteps];
+  customWorkflowSteps = [];
+
+  tempSteps.forEach((step) => {
+    const stepIndex = customWorkflowSteps.length;
+    customWorkflowSteps.push(step);
+
+    const stepCard = document.createElement('div');
+    stepCard.className = 'workflow-step-builder-card';
+    stepCard.dataset.stepIndex = stepIndex;
+
+    stepCard.innerHTML = `
+      <div class="workflow-step-header">
+        <h4>Step ${stepIndex + 1}</h4>
+        ${stepIndex > 0 ? '<button type="button" class="remove-step-btn" onclick="removeWorkflowStep(' + stepIndex + ')">Remove</button>' : ''}
+      </div>
+      <div class="setting-item">
+        <label>Step Title</label>
+        <input type="text" class="step-title-input" data-step="${stepIndex}" value="${step.title || ''}" placeholder="E.g., Generate Outline" />
+      </div>
+      <div class="setting-item">
+        <label>System Prompt</label>
+        <textarea class="step-prompt-input" data-step="${stepIndex}" placeholder="Instructions for the AI. Use {input} to reference user input.">${step.systemPrompt || ''}</textarea>
+        <p class="setting-hint">Use {input} as a placeholder for user input. If you don't include {input}, the step will automatically use the previous step's output.</p>
+      </div>
+    `;
+
+    elements.workflowStepsBuilder.appendChild(stepCard);
+
+    // Re-add event listeners
+    const titleInput = stepCard.querySelector('.step-title-input');
+    const promptInput = stepCard.querySelector('.step-prompt-input');
+
+    if (titleInput) {
+      titleInput.addEventListener('input', (e) => {
+        customWorkflowSteps[stepIndex].title = e.target.value;
+      });
+    }
+
+    if (promptInput) {
+      promptInput.addEventListener('input', (e) => {
+        customWorkflowSteps[stepIndex].systemPrompt = e.target.value;
+      });
+    }
+  });
+}
+
+// Save custom workflow
+function saveCustomWorkflow() {
+  const name = elements.workflowName?.value.trim();
+  const description = elements.workflowDescription?.value.trim();
+  const icon = elements.workflowIcon?.value.trim() || '📝';
+
+  if (!name) {
+    alert('Please enter a workflow name');
+    return;
+  }
+
+  if (customWorkflowSteps.length === 0) {
+    alert('Please add at least one step');
+    return;
+  }
+
+  // Validate all steps have titles and prompts
+  for (let i = 0; i < customWorkflowSteps.length; i++) {
+    if (!customWorkflowSteps[i].title || !customWorkflowSteps[i].systemPrompt) {
+      alert(`Step ${i + 1} is missing a title or prompt`);
+      return;
+    }
+  }
+
+  // Create the custom workflow template
+  const templateId = 'custom-' + Date.now();
+  const template = {
+    name,
+    icon,
+    description: description || 'Custom workflow',
+    inputPrompt: 'Enter your initial input:',
+    acceptsFile: false,
+    steps: customWorkflowSteps.map(step => ({
+      title: step.title,
+      systemPrompt: step.systemPrompt
+    }))
+  };
+
+  // Add to templates
+  WORKFLOW_TEMPLATES[templateId] = template;
+
+  // Save to localStorage
+  saveCustomWorkflows();
+
+  // Add to sidebar
+  addCustomWorkflowToSidebar(templateId, template);
+
+  // Close modal and start the workflow
+  closeWorkflowBuilder();
+  startWorkflow(templateId);
+}
+
+// Save custom workflows to localStorage
+function saveCustomWorkflows() {
+  const customWorkflows = {};
+  Object.keys(WORKFLOW_TEMPLATES).forEach((key) => {
+    if (key.startsWith('custom-')) {
+      customWorkflows[key] = WORKFLOW_TEMPLATES[key];
+    }
+  });
+  localStorage.setItem('customWorkflows', JSON.stringify(customWorkflows));
+}
+
+// Load custom workflows from localStorage
+function loadCustomWorkflows() {
+  try {
+    const saved = localStorage.getItem('customWorkflows');
+    if (saved) {
+      const customWorkflows = JSON.parse(saved);
+      Object.assign(WORKFLOW_TEMPLATES, customWorkflows);
+
+      // Add to sidebar
+      Object.keys(customWorkflows).forEach((templateId) => {
+        addCustomWorkflowToSidebar(templateId, customWorkflows[templateId]);
+      });
+    }
+  } catch (error) {
+    console.error('Failed to load custom workflows:', error);
+  }
+}
+
+// Add custom workflow card to sidebar
+function addCustomWorkflowToSidebar(templateId, template) {
+  const templateList = document.querySelector('.template-list');
+  if (!templateList) return;
+
+  // Check if already exists
+  const existing = templateList.querySelector(`[data-template="${templateId}"]`);
+  if (existing) return;
+
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'template-card';
+  card.dataset.template = templateId;
+  card.innerHTML = `
+    <span class="template-icon">${template.icon}</span>
+    <span class="template-name">${template.name}</span>
+  `;
+
+  card.addEventListener('click', () => {
+    startWorkflow(templateId);
+  });
+
+  templateList.appendChild(card);
 }
 
 // Reset workflow
@@ -2761,8 +3048,21 @@ function attachEventListeners() {
   });
 
   // Workflow controls
-  elements.newWorkflowBtn?.addEventListener('click', resetWorkflow);
+  elements.newWorkflowBtn?.addEventListener('click', openWorkflowBuilder);
   elements.exportResultsBtn?.addEventListener('click', exportWorkflowResults);
+
+  // Workflow builder controls
+  elements.closeWorkflowBuilderBtn?.addEventListener('click', closeWorkflowBuilder);
+  elements.cancelWorkflowBuilderBtn?.addEventListener('click', closeWorkflowBuilder);
+  elements.saveWorkflowBtn?.addEventListener('click', saveCustomWorkflow);
+  elements.addStepBtn?.addEventListener('click', addWorkflowStep);
+
+  // Close workflow builder modal on backdrop click
+  elements.workflowBuilderModal?.addEventListener('click', (e) => {
+    if (e.target === elements.workflowBuilderModal) {
+      closeWorkflowBuilder();
+    }
+  });
 
   // Settings modal
   elements.settingsBtn?.addEventListener('click', openSettings);
@@ -2873,6 +3173,7 @@ async function bootstrap() {
   loadTheme();  // Initialize theme first
   setDefaultModelOptions();
   loadSettings();
+  loadCustomWorkflows();  // Load saved custom workflows
   attachEventListeners();
   startNewConversation({ focusInput: false, persistSummary: false });
   updateChatDirDisplay();
