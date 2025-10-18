@@ -240,13 +240,14 @@ main {
 
 .setup-container {
   width: 100%;
-  max-width: 600px;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 3rem;
   align-items: center;
   text-align: center;
   justify-content: center;
+  padding: 0 2rem;
 }
 
 .setup-logo {
@@ -325,7 +326,7 @@ main {
 /* Step Content - Notion-style minimal */
 .step-content {
   width: 100%;
-  max-width: 500px;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -616,6 +617,10 @@ body.chat-mode #chatView {
   border-radius: 18px;
   box-shadow: var(--shadow-sm);
   max-width: 70%;
+}
+
+[data-theme="dark"] .bubble.user {
+  color: #1f1f1f;
 }
 
 .bubble.assistant {
