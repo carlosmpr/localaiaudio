@@ -1550,21 +1550,34 @@ async function handleChatSubmit(event) {
     return;
   }
 
-  let message = elements.chatInput.value.trim();
-  if (!message && !state.attachedDocument) return;
+  const userMessage = elements.chatInput.value.trim();
+  if (!userMessage && !state.attachedDocument) return;
 
-  // If a document is attached, prepend it to the message
+  // Keep track of the visible message and the actual message sent to model
+  let visibleMessage = userMessage;
+  let modelMessage = userMessage;
+
+  // If a document is attached, add it to the model context invisibly
+  let documentContext = null;
   if (state.attachedDocument) {
-    const docContext = `[Document: ${state.attachedDocument.name}]\n\n${state.attachedDocument.text}\n\n---\n\n`;
-    message = docContext + (message || 'Please analyze this document.');
+    // Create document context for the model (invisible to user)
+    documentContext = {
+      role: 'system',
+      content: `[Attached Document: ${state.attachedDocument.name}]\n\n${state.attachedDocument.text}`
+    };
 
-    // Clear the attached document after sending
+    // If user didn't type anything, show a placeholder message
+    if (!userMessage) {
+      visibleMessage = `📄 Analyze document: ${state.attachedDocument.name}`;
+      modelMessage = 'Please analyze the attached document and provide insights.';
+    }
+
+    // Clear the attached document after preparing
     removeDocument();
   }
 
-  if (!message) return;
-
-  appendMessageBubble('user', message);
+  // Show only the user's typed message (or placeholder) in the UI
+  appendMessageBubble('user', visibleMessage);
   elements.chatInput.value = '';
   elements.sendBtn.disabled = true;
   state.isStreaming = true;
@@ -1572,9 +1585,11 @@ async function handleChatSubmit(event) {
   showStopButton();
 
   const timestamp = new Date().toISOString();
+
+  // Save only the visible message to conversation history (what user sees)
   const userRecord = {
     role: 'user',
-    content: message,
+    content: visibleMessage,
     timestamp
   };
   state.conversation.push(userRecord);
@@ -1583,7 +1598,64 @@ async function handleChatSubmit(event) {
   updateContextStats();
   await appendChatRecords([userRecord]);
 
-  const historySlice = getContextMessages();
+  // Prepare context for the model
+  let historySlice = getContextMessages();
+
+  // If there's document context, inject it strategically
+  if (documentContext) {
+    // Calculate available space for document
+    const historyTokens = historySlice.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
+    const docTokens = estimateTokens(documentContext.content);
+    const maxTokens = state.settings.maxTokens;
+
+    // Reserve 25% for response, 75% for context + document
+    const availableForContext = maxTokens * 0.75;
+
+    if (historyTokens + docTokens > availableForContext) {
+      // Document + history exceeds limit - need to trim
+      console.log(`[DOC-CONTEXT] Document (${docTokens} tokens) + History (${historyTokens} tokens) exceeds limit`);
+
+      // Prioritize: recent messages + document
+      // Keep last few messages and the document
+      const targetHistoryTokens = availableForContext - docTokens;
+
+      if (targetHistoryTokens > 0) {
+        // Trim history to fit with document
+        const trimmedHistory = [];
+        let currentTokens = 0;
+
+        for (let i = historySlice.length - 1; i >= 0; i--) {
+          const msgTokens = estimateTokens(historySlice[i].content);
+          if (currentTokens + msgTokens <= targetHistoryTokens) {
+            trimmedHistory.unshift(historySlice[i]);
+            currentTokens += msgTokens;
+          } else {
+            break;
+          }
+        }
+
+        historySlice = trimmedHistory;
+        console.log(`[DOC-CONTEXT] Trimmed history to ${historySlice.length} messages (${currentTokens} tokens) to fit document`);
+      } else {
+        // Document alone exceeds limit - truncate document
+        const targetDocLength = Math.floor(availableForContext * 4); // ~4 chars per token
+        documentContext.content = documentContext.content.substring(0, targetDocLength) + '\n\n[Document truncated due to size...]';
+        historySlice = historySlice.slice(-2); // Keep only last 2 messages
+        console.log(`[DOC-CONTEXT] Document too large, truncated to ${targetDocLength} chars`);
+      }
+    }
+
+    // Add document context at the beginning (after trimming if needed)
+    historySlice.unshift(documentContext);
+  }
+
+  // Replace the last user message with the actual model message (not the visible one)
+  if (historySlice.length > 0) {
+    const lastMsg = historySlice[historySlice.length - 1];
+    if (lastMsg.role === 'user') {
+      lastMsg.content = modelMessage;
+    }
+  }
 
   if (state.backend === 'python' || state.backend === 'embedded') {
     if (state.backend === 'python') {
@@ -1601,13 +1673,14 @@ async function handleChatSubmit(event) {
     try {
       const command = state.backend === 'embedded' ? 'embedded_chat_stream' : 'python_chat_stream';
       console.log(`[DEBUG] Calling ${command} with:`, {
-        message,
+        message: modelMessage,
         historyLength: historySlice.length,
         sessionId: state.sessionId,
-        backend: state.backend
+        backend: state.backend,
+        hasDocumentContext: !!documentContext
       });
       await invoke(command, {
-        message,
+        message: modelMessage,
         history: historySlice,
         sessionId: state.sessionId,
         chatsDir: state.paths?.chats || null
@@ -1657,8 +1730,14 @@ async function handleChatSubmit(event) {
   state.streamingBuffer = '';
 
   try {
+    console.log(`[DEBUG] Calling send_chat_message with:`, {
+      message: modelMessage,
+      model: state.activeModel,
+      historyLength: historySlice.length,
+      hasDocumentContext: !!documentContext
+    });
     const response = await invoke('send_chat_message', {
-      message,
+      message: modelMessage,
       model: state.activeModel,
       history: historySlice,
       sessionId: state.sessionId,
