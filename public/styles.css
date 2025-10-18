@@ -172,6 +172,10 @@ header {
   box-shadow: var(--shadow-sm);
 }
 
+[data-theme="dark"] .primary {
+  color: #1f1f1f;
+}
+
 .primary:hover:not(:disabled) {
   background: var(--accent-hover);
   box-shadow: var(--shadow-md);
@@ -272,6 +276,13 @@ main {
   font-size: 1.0625rem;
   line-height: 1.7;
   max-width: 480px;
+}
+
+.setup-start-btn {
+  margin-top: 1rem;
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+  align-self: center;
 }
 
 /* Backend Selector - Hidden during setup */
