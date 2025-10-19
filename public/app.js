@@ -314,36 +314,36 @@ const WORKFLOW_TEMPLATES = {
 
 /**
  * Build the prompt sent to the runtime for a workflow node.
- * Ensures every node always sees the original user entry and, when available,
- * the previous node's output to maintain chain fidelity.
+ * Chain-based approach: Each node only receives the previous node's result.
+ * First node receives the initial user input.
+ * This prevents context overload and makes each step task-focused.
  */
 function buildWorkflowPrompt(step, nodeIndex, initialInputOverride) {
   const instructions = step?.systemPrompt || '';
-  const originalEntry = (initialInputOverride ?? state.workflowInitialInput ?? '').trim();
-  const previousOutput = nodeIndex > 0 ? (state.stepResults[nodeIndex - 1] || '').trim() : '';
-  const hasInputPlaceholder = instructions.includes('{input}');
 
-  const instructionsWithInput = hasInputPlaceholder
-    ? instructions.replace('{input}', originalEntry)
-    : instructions;
-
-  const contextSections = [];
-
+  // For the first node, use the initial input
+  // For subsequent nodes, use only the previous node's output
+  let inputContent = '';
   if (nodeIndex === 0) {
-    if (!hasInputPlaceholder && originalEntry) {
-      contextSections.push(`[User Entry]\n${originalEntry}`);
-    }
+    inputContent = (initialInputOverride ?? state.workflowInitialInput ?? '').trim();
   } else {
-    if (originalEntry) {
-      contextSections.push(`[Original User Entry]\n${originalEntry}`);
-    }
-    if (previousOutput) {
-      contextSections.push(`[Previous Step Output]\n${previousOutput}`);
-    }
+    inputContent = (state.stepResults[nodeIndex - 1] || '').trim();
   }
 
-  const contextBlock = contextSections.length ? `\n\n${contextSections.join('\n\n')}` : '';
-  return `${instructionsWithInput}${contextBlock}\n\nRespond with the required output for this step.`;
+  // Support {input} placeholder in instructions
+  const hasInputPlaceholder = instructions.includes('{input}');
+
+  if (hasInputPlaceholder) {
+    // Replace {input} with the actual input content
+    return instructions.replace('{input}', inputContent);
+  } else {
+    // Provide input as context after instructions
+    if (inputContent) {
+      return `${instructions}\n\n[Input]\n${inputContent}\n\nRespond with the required output for this step.`;
+    } else {
+      return `${instructions}\n\nRespond with the required output for this step.`;
+    }
+  }
 }
 
 function isCustomWorkflowId(templateId) {
@@ -402,11 +402,11 @@ function startWorkflow(templateId) {
   if (!template) return;
 
   state.activeWorkflow = templateId;
-  const workflowSteps = Array.isArray(template.steps) ? template.steps.slice(0, 10) : [];
-  if (template.steps?.length > 10) {
-    console.warn(`Workflow ${templateId} has more than 10 steps. Only the first 10 will run.`);
+  const workflowSteps = Array.isArray(template.steps) ? template.steps.slice(0, 20) : [];
+  if (template.steps?.length > 20) {
+    console.warn(`Workflow ${templateId} has more than 20 steps. Only the first 20 will run.`);
   }
-  state.workflowSteps = JSON.parse(JSON.stringify(workflowSteps)); // Deep copy constrained to 10 steps
+  state.workflowSteps = JSON.parse(JSON.stringify(workflowSteps)); // Deep copy constrained to 20 steps
   state.currentStepIndex = 0;
   state.stepResults = [];
   state.workflowInitialInput = '';
@@ -416,16 +416,10 @@ function startWorkflow(templateId) {
   }
 
   if (elements.editWorkflowBtn) {
-    const isCustom = isCustomWorkflowId(templateId);
-    if (isCustom) {
-      elements.editWorkflowBtn.classList.remove('hidden');
-      elements.editWorkflowBtn.disabled = false;
-      elements.editWorkflowBtn.dataset.template = templateId;
-    } else {
-      elements.editWorkflowBtn.classList.add('hidden');
-      elements.editWorkflowBtn.disabled = true;
-      delete elements.editWorkflowBtn.dataset.template;
-    }
+    // Show edit button for all workflows
+    elements.editWorkflowBtn.classList.remove('hidden');
+    elements.editWorkflowBtn.disabled = false;
+    elements.editWorkflowBtn.dataset.template = templateId;
   }
 
   if (elements.deleteWorkflowBtn) {
@@ -612,13 +606,16 @@ async function executeAutomatedWorkflow(template) {
   // Render progress view
   renderWorkflowProgress(template);
 
-  // Execute all steps sequentially
+  // Execute all steps sequentially (chain-based)
   for (let i = 0; i < template.steps.length; i++) {
     state.currentStepIndex = i;
     updateWorkflowProgress(i, 'processing');
 
     try {
-      const result = await executeWorkflowNode(i, userInput, template.steps[i]);
+      // Only pass initial input to first node
+      // Subsequent nodes get input from previous result via buildWorkflowPrompt
+      const inputForNode = i === 0 ? userInput : null;
+      const result = await executeWorkflowNode(i, inputForNode, template.steps[i]);
       state.stepResults[i] = result;
       updateWorkflowProgress(i, 'completed', result);
     } catch (error) {
@@ -921,14 +918,13 @@ async function executeWorkflowStep(stepIndex, userInput) {
 
   const normalizedInput = (userInput || '').trim();
 
-  // Capture the originating user entry so downstream nodes always have access
-  if (!state.workflowInitialInput && normalizedInput) {
-    state.workflowInitialInput = normalizedInput;
-  } else if (stepIndex === 0 && normalizedInput) {
+  // For chain-based workflow: only capture initial input for first node
+  if (stepIndex === 0 && normalizedInput) {
     state.workflowInitialInput = normalizedInput;
   }
 
-  const promptForModel = buildWorkflowPrompt(step, stepIndex, state.workflowInitialInput || normalizedInput);
+  // buildWorkflowPrompt handles chain logic: first node gets initial input, others get previous result
+  const promptForModel = buildWorkflowPrompt(step, stepIndex, stepIndex === 0 ? normalizedInput : null);
 
   // Disable the button and show loading state
   const stepCard = elements.stepperContent.querySelector(`[data-step-index="${stepIndex}"]`);
@@ -1086,28 +1082,43 @@ let customWorkflowSteps = [];
 function updateAddStepButtonState() {
   if (!elements.addStepBtn) return;
 
-  const maxReached = customWorkflowSteps.length >= 10;
+  const maxReached = customWorkflowSteps.length >= 20;
   elements.addStepBtn.disabled = maxReached;
-  elements.addStepBtn.textContent = maxReached ? 'Maximum of 10 steps reached' : '+ Add Step';
+  elements.addStepBtn.textContent = maxReached ? 'Maximum of 20 steps reached' : '+ Add Step';
 }
 
 // Open workflow builder modal
 function openWorkflowBuilder({ mode = 'create', templateId = null } = {}) {
   const isEdit = mode === 'edit' && templateId && WORKFLOW_TEMPLATES[templateId];
-  state.workflowBuilderMode = isEdit ? 'edit' : 'create';
-  state.workflowBeingEdited = isEdit ? templateId : null;
+  const isCustom = templateId && isCustomWorkflowId(templateId);
+
+  // If editing a built-in template, we'll create a copy instead
+  state.workflowBuilderMode = (isEdit && isCustom) ? 'edit' : 'create';
+  state.workflowBeingEdited = (isEdit && isCustom) ? templateId : null;
 
   const template = isEdit ? WORKFLOW_TEMPLATES[templateId] : null;
 
   if (elements.workflowBuilderTitle) {
-    elements.workflowBuilderTitle.textContent = isEdit ? 'Edit Workflow' : 'Create Custom Workflow';
+    if (isEdit && !isCustom) {
+      elements.workflowBuilderTitle.textContent = 'Create Copy of Workflow';
+    } else if (isEdit) {
+      elements.workflowBuilderTitle.textContent = 'Edit Workflow';
+    } else {
+      elements.workflowBuilderTitle.textContent = 'Create Custom Workflow';
+    }
   }
   if (elements.saveWorkflowBtn) {
-    elements.saveWorkflowBtn.textContent = isEdit ? 'Save Changes' : 'Create Workflow';
+    if (isEdit && isCustom) {
+      elements.saveWorkflowBtn.textContent = 'Save Changes';
+    } else {
+      elements.saveWorkflowBtn.textContent = 'Create Workflow';
+    }
   }
 
   if (elements.workflowName) {
-    elements.workflowName.value = template?.name || '';
+    // If copying a built-in template, add "Copy of" prefix
+    const baseName = template?.name || '';
+    elements.workflowName.value = (isEdit && !isCustom && baseName) ? `Copy of ${baseName}` : baseName;
   }
   if (elements.workflowDescription) {
     elements.workflowDescription.value = template?.description || '';
@@ -1126,7 +1137,7 @@ function openWorkflowBuilder({ mode = 'create', templateId = null } = {}) {
     customWorkflowSteps = template.steps.map((step) => ({
       title: step.title || '',
       systemPrompt: step.systemPrompt || ''
-    })).slice(0, 10);
+    })).slice(0, 20);
     renderWorkflowStepsBuilder();
     if (customWorkflowSteps.length === 0) {
       addWorkflowStep();
@@ -1171,8 +1182,8 @@ function closeWorkflowBuilder() {
 
 // Add a new workflow step
 function addWorkflowStep() {
-  if (customWorkflowSteps.length >= 10) {
-    alert('Custom workflows support a maximum of 10 steps.');
+  if (customWorkflowSteps.length >= 20) {
+    alert('Custom workflows support a maximum of 20 steps.');
     updateAddStepButtonState();
     return;
   }
@@ -1306,8 +1317,8 @@ function saveCustomWorkflow() {
     return;
   }
 
-  if (customWorkflowSteps.length > 10) {
-    alert('Custom workflows support a maximum of 10 steps.');
+  if (customWorkflowSteps.length > 20) {
+    alert('Custom workflows support a maximum of 20 steps.');
     return;
   }
 
@@ -1335,7 +1346,7 @@ function saveCustomWorkflow() {
     description: description || baseTemplate?.description || 'Custom workflow',
     inputPrompt: baseTemplate?.inputPrompt || 'Enter your initial input:',
     acceptsFile: baseTemplate?.acceptsFile ?? false,
-    steps: customWorkflowSteps.slice(0, 10).map((step) => ({
+    steps: customWorkflowSteps.slice(0, 20).map((step) => ({
       title: step.title,
       systemPrompt: step.systemPrompt
     }))
