@@ -3,306 +3,93 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PrivateAI – Local AI Assistant</title>
+    <title>PrivateAI Voice</title>
     <link rel="stylesheet" href="/styles.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="highlightTheme">
   </head>
   <body>
-    <header>
-      <div class="header-copy">
-        <h1>PrivateAI</h1>
-        <p class="subtitle">100% Local AI Assistant</p>
-      </div>
-      <div class="header-actions">
-        <nav class="view-nav">
-          <button type="button" id="chatViewNav" class="nav-btn active">Chat</button>
-          <button type="button" id="stepperViewNav" class="nav-btn">Workflows</button>
-        </nav>
-        <button type="button" id="themeToggle" class="theme-toggle" title="Toggle theme">
-          <span id="themeIcon">☀️</span>
-        </button>
-      </div>
-    </header>
+    <div class="container">
+      <header>
+        <h1>Voice Transcription</h1>
+        <p class="subtitle">Convert audio to text using local AI</p>
+      </header>
 
-    <main>
-      <section id="setupView" class="visible">
-        <div class="setup-container">
-          <div class="setup-logo">
-            <div class="setup-logo-icon">🤖</div>
-            <h2 class="setup-title">Welcome to PrivateAI</h2>
-            <p class="setup-description">
-              Set up your private AI assistant in just a few clicks. Everything runs 100% locally on your device.
-            </p>
-          </div>
+      <main>
+        <!-- Input Section -->
+        <div class="transcription-card">
+          <div class="section">
+            <h2>Audio File</h2>
+            <p class="hint">Select an audio file to transcribe (WAV, MP3, MP4, M4A, OGG, FLAC, etc.)</p>
 
-          <button id="startSetupBtn" class="primary setup-start-btn">Start Setup</button>
-
-          <div class="backend-selector">
-          <label for="backendSelect">Runtime engine</label>
-          <select id="backendSelect">
-            <option value="ollama">Ollama (default)</option>
-            <option value="python">Python llama.cpp sidecar</option>
-            <option value="embedded">Embedded llama.cpp (no dependencies)</option>
-          </select>
-          <p class="hint">
-            Embedded runtime runs llama.cpp directly with zero external dependencies.
-          </p>
-        </div>
-
-        <ol class="steps">
-          <li data-step="scan">1</li>
-          <li data-step="storage">2</li>
-          <li data-step="install">3</li>
-          <li data-step="model">4</li>
-          <li data-step="complete">5</li>
-        </ol>
-
-        <div class="step-content">
-          <div id="stepStatus">Press "Start Setup" to begin.</div>
-
-          <div class="hardware-summary">
-            <h3>Hardware snapshot</h3>
-            <pre id="hardwareOutput">—</pre>
-          </div>
-
-          <div class="chat-storage">
-            <div class="chat-storage-info">
-              <label for="chatDirDisplay">Chat history folder</label>
-              <p id="chatDirDisplay">Default: ~/PrivateAI/Chats</p>
-            </div>
-            <button type="button" id="chooseChatDirBtn" class="secondary small">Choose</button>
-          </div>
-
-          <div class="model-selector">
-            <label for="modelSelect">Recommended model</label>
-            <select id="modelSelect">
-              <option value="llama3.1:8b">Llama 3.1 8B — balanced</option>
-              <option value="phi3:mini">Phi-3 Mini — lightweight</option>
-              <option value="deepseek-r1:7b">DeepSeek R1 7B — reasoning</option>
-            </select>
-          </div>
-
-          <div class="log-pane">
-            <h3>Activity log</h3>
-            <ul id="logEntries"></ul>
-          </div>
-        </div>
-      </div>
-      </section>
-
-      <section id="chatView" class="hidden">
-        <div class="chat-layout">
-          <aside class="conversation-sidebar">
-            <div class="conversation-header">
-              <h2>Conversations</h2>
-              <button type="button" id="newConversationBtn" class="secondary small">New chat</button>
-            </div>
-            <div class="conversation-scroll">
-              <div id="conversationList" class="conversation-list"></div>
-              <p id="conversationEmpty" class="conversation-empty">No conversations yet.</p>
-            </div>
-          </aside>
-          <div class="chat-pane">
-            <div class="chat-header">
-              <div class="chat-header-text">
-                <h2 id="conversationTitle">New chat</h2>
-                <p class="chat-subtitle">Speak with your local assistant.</p>
-              </div>
-              <div class="chat-meta">
-                <button type="button" id="settingsBtn" class="secondary small icon-button" title="Context & Model Settings">
-                  Settings
-                </button>
-                <button type="button" id="changeChatDirBtn" class="secondary small icon-button" title="Choose chat storage folder">
-                  Chat folder
-                </button>
-                <span id="activeModel">Model: —</span>
-                <button id="resetWizardBtn" class="secondary">Re-run setup</button>
-              </div>
-            </div>
-            <div class="chat-history" id="chatHistory"></div>
-
-            <!-- Attached Document Preview -->
-            <div id="documentPreview" class="document-preview hidden">
-              <div class="document-preview-content">
-                <span class="document-icon">📄</span>
-                <div class="document-info">
-                  <strong id="documentName"></strong>
-                  <p id="documentStats"></p>
-                </div>
-                <button type="button" id="removeDocBtn" class="remove-doc-btn">×</button>
-              </div>
+            <div class="file-input-wrapper">
+              <button id="selectAudioBtn" class="btn">
+                Choose file
+              </button>
+              <div id="selectedFile" class="selected-file">No file selected</div>
             </div>
 
-            <form id="chatForm">
-              <div class="input-wrapper">
-                <button type="button" id="attachDocBtn" class="attach-doc-btn" title="Attach document">
-                  📎
-                </button>
-                <textarea id="chatInput" placeholder="Message PrivateAI..." rows="1"></textarea>
-              </div>
-              <div class="controls">
-                <button type="button" id="stopBtn" class="secondary stop-btn hidden">Stop</button>
-                <button type="submit" id="sendBtn" class="primary" disabled>Send</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </section>
-
-      <!-- Step Prompter View -->
-      <section id="stepperView" class="hidden">
-        <div class="stepper-layout">
-          <aside class="workflow-sidebar">
-            <div class="workflow-header">
-              <h2>Workflows</h2>
-              <button type="button" id="newWorkflowBtn" class="secondary small">New Workflow</button>
-            </div>
-            <div class="templates-section">
-              <h3>Templates</h3>
-              <div class="template-list">
-                <button type="button" class="template-card" data-template="social-media">
-                  <span class="template-icon">📱</span>
-                  <span class="template-name">Social Media Post</span>
-                </button>
-                <button type="button" class="template-card" data-template="blog-post">
-                  <span class="template-icon">📝</span>
-                  <span class="template-name">Blog Post</span>
-                </button>
-                <button type="button" class="template-card" data-template="email">
-                  <span class="template-icon">✉️</span>
-                  <span class="template-name">Email Campaign</span>
-                </button>
-                <button type="button" class="template-card" data-template="product-desc">
-                  <span class="template-icon">🛍️</span>
-                  <span class="template-name">Product Description</span>
-                </button>
-                <button type="button" class="template-card" data-template="document-summary">
-                  <span class="template-icon">📄</span>
-                  <span class="template-name">Document Summarizer</span>
-                </button>
-              </div>
-            </div>
-          </aside>
-
-          <div class="stepper-main">
-            <div class="stepper-header">
-              <h2 id="workflowTitle">Select a workflow to begin</h2>
-              <button type="button" id="editWorkflowBtn" class="secondary small hidden">Edit Workflow</button>
-              <button type="button" id="deleteWorkflowBtn" class="danger small hidden">Delete Workflow</button>
-              <button type="button" id="exportResultsBtn" class="secondary small hidden">Export Results</button>
-            </div>
-
-            <div class="stepper-content" id="stepperContent">
-              <div class="stepper-empty">
-                <p>👈 Choose a template from the sidebar to start a guided workflow</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <!-- Settings Modal -->
-    <div id="settingsModal" class="modal hidden">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>Context & Model Settings</h2>
-          <button type="button" id="closeSettingsBtn" class="close-btn">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="settings-section">
-            <h3>Context Window Management</h3>
-            <div class="setting-item">
-              <label for="contextStrategy">Strategy</label>
-              <select id="contextStrategy">
-                <option value="all">Full History (send all messages)</option>
-                <option value="sliding">Sliding Window (last N messages)</option>
-                <option value="smart">Smart Limit (last N, keep important)</option>
+            <div class="language-selector">
+              <label for="languageSelect">Language</label>
+              <select id="languageSelect">
+                <option value="">Auto-detect</option>
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="it">Italian</option>
+                <option value="pt">Portuguese</option>
+                <option value="nl">Dutch</option>
+                <option value="ru">Russian</option>
+                <option value="zh">Chinese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
               </select>
-              <p class="setting-hint">How to manage conversation context sent to the model</p>
             </div>
 
-            <div class="setting-item" id="maxMessagesContainer">
-              <label for="maxMessages">Maximum Messages</label>
-              <input type="number" id="maxMessages" min="2" max="100" value="20" />
-              <p class="setting-hint">Number of recent messages to include (pairs of user/assistant)</p>
-            </div>
-
-            <div class="setting-item">
-              <label for="maxTokens">Context Size (tokens)</label>
-              <input type="number" id="maxTokens" min="512" max="32768" step="512" value="8192" />
-              <p class="setting-hint">Approximate token limit for context (8192 ≈ 6000 words)</p>
-            </div>
+            <button id="transcribeBtn" class="btn btn-primary" disabled>
+              Transcribe
+            </button>
           </div>
 
-          <div class="settings-section">
-            <h3>Model Parameters</h3>
-            <div class="setting-item">
-              <label for="temperature">Temperature: <span id="temperatureValue">0.7</span></label>
-              <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7" />
-              <p class="setting-hint">Higher = more creative, Lower = more focused</p>
-            </div>
-          </div>
+          <div class="divider"></div>
 
-          <div class="settings-section">
-            <h3>Context Info</h3>
-            <div class="context-stats">
-              <p><strong>Current conversation:</strong> <span id="currentMessageCount">0</span> messages</p>
-              <p><strong>Estimated tokens:</strong> <span id="estimatedTokens">0</span> tokens</p>
-              <p><strong>Will send to model:</strong> <span id="willSendCount">0</span> messages</p>
+          <!-- Output Section -->
+          <div class="section output-section">
+            <div class="output-header">
+              <h2>Transcription</h2>
+              <button id="copyBtn" class="btn btn-small" disabled>Copy</button>
             </div>
+
+            <div id="status" class="status hidden"></div>
+
+            <textarea
+              id="transcriptionOutput"
+              placeholder="Your transcription will appear here..."
+              readonly
+            ></textarea>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" id="saveSettingsBtn" class="primary">Save Settings</button>
-          <button type="button" id="cancelSettingsBtn" class="secondary">Cancel</button>
+
+        <!-- Info Section -->
+        <div class="info-section">
+          <h3>How it works</h3>
+          <ol>
+            <li>Choose an audio file from your computer</li>
+            <li>Select the language (optional)</li>
+            <li>Click "Transcribe" to convert speech to text</li>
+            <li>Copy or save the transcription</li>
+          </ol>
+
+          <div class="note">
+            <strong>Note:</strong> This app runs completely offline using Whisper. All audio formats are automatically converted to the correct format (16kHz mono WAV) for optimal transcription.
+          </div>
         </div>
-      </div>
+      </main>
+
+      <footer>
+        <p>Powered by Whisper • 100% offline & private</p>
+      </footer>
     </div>
 
-    <!-- Custom Workflow Builder Modal -->
-    <div id="workflowBuilderModal" class="modal hidden">
-      <div class="modal-content modal-large">
-        <div class="modal-header">
-          <h2 id="workflowBuilderTitle">Create Custom Workflow</h2>
-          <button type="button" id="closeWorkflowBuilderBtn" class="close-btn">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="workflow-builder-section">
-            <h3>Workflow Details</h3>
-            <div class="setting-item">
-              <label for="workflowName">Workflow Name</label>
-              <input type="text" id="workflowName" placeholder="E.g., Blog Post Generator" />
-            </div>
-            <div class="setting-item">
-              <label for="workflowDescription">Description</label>
-              <input type="text" id="workflowDescription" placeholder="Brief description of this workflow" />
-            </div>
-            <div class="setting-item">
-              <label for="workflowIcon">Icon (emoji)</label>
-              <input type="text" id="workflowIcon" placeholder="📝" maxlength="2" />
-            </div>
-          </div>
-
-          <div class="workflow-builder-section">
-            <div class="workflow-steps-header">
-              <h3>Workflow Steps</h3>
-              <button type="button" id="addStepBtn" class="secondary small">+ Add Step</button>
-            </div>
-            <div id="workflowStepsBuilder" class="workflow-steps-builder">
-              <!-- Steps will be added here dynamically -->
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" id="saveWorkflowBtn" class="primary">Create Workflow</button>
-          <button type="button" id="cancelWorkflowBuilderBtn" class="secondary">Cancel</button>
-        </div>
-      </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

@@ -1,309 +1,266 @@
-# CaribbeanTechS – Private AI Assistant
+# PrivateAI Voice – Offline Audio Transcription
 
-Private, on-device AI that installs in one click, optimizes for your hardware, and keeps every conversation local.
+PrivateAI Voice is a lightweight desktop app (Tauri + Rust + web view) that runs Whisper locally, converting audio files to text without touching the internet. Everything runs 100% offline on your machine.
 
-## Core Promise
-> Private AI -- no cloud, no data sharing. Everything runs on your machine.
+## ✨ Features
 
-## Table of Contents
-- [Product Goals](#product-goals)
-- [Tech Stack](#tech-stack)
-- [Running the MVP](#running-the-mvp)
-- [System Overview](#system-overview)
-- [User Journey](#user-journey)
-- [Hardware Detection](#hardware-detection)
-- [Model Catalog and Recommendation Logic](#model-catalog-and-recommendation-logic)
-- [Installation Workflow](#installation-workflow)
-- [Chat Interface](#chat-interface)
-- [Local Storage and Security](#local-storage-and-security)
-- [Packaging and Distribution](#packaging-and-distribution)
-- [Team Roles](#team-roles)
-- [Development Milestones](#development-milestones)
-- [Future Add-ons](#future-add-ons)
-- [Flow Diagram](#flow-diagram)
-- [License](#license)
+- **🔒 100% Offline**: No internet required - all processing happens locally
+- **🎵 Universal Audio Support**: MP3, MP4, M4A, WAV, OGG, FLAC, AAC, WMA, WEBM
+- **⚡ Auto-Conversion**: FFmpeg bundled - automatically converts to optimal format (16kHz mono WAV)
+- **🤖 Local AI**: Uses Whisper tiny model (77MB) for fast, accurate transcription
+- **🎨 Clean UI**: Minimalist Notion-style black and white interface
+- **📦 No Installation Required**: FFmpeg and Whisper model are bundled - just download and run
+- **🌍 Multi-Language**: Support for English, Spanish, French, German, Italian, Portuguese, and more
+- **💻 Cross-Platform**: macOS, Windows, Linux
 
-## Product Goals
+## 🚀 How It Works
 
-- Deliver a fully offline ChatGPT-style assistant with zero telemetry.
-- Detect the user's hardware automatically and choose the best-fitting local LLM.
-- Provide a smooth installer experience across Windows, macOS, and Linux.
-- Persist chats, settings, and model assets locally for easy backup and portability.
+1. **Select Audio File** - Drop any audio/video file (MP3, MP4, etc.)
+2. **Auto-Conversion** - FFmpeg converts to 16kHz mono WAV if needed
+3. **AI Transcription** - Whisper processes the audio locally
+4. **Get Text** - Copy or save your transcription
 
-## Tech Stack
+### Under the Hood
 
-### Core Choice
-- Tauri (Rust + WebView) with React delivers a small, secure, cross-platform binary and installer surface.
-- Rust backend commands manage native operations, while the WebView hosts the ChatGPT-style UI.
-
-### Desktop App and UI
-- React drives the conversational interface; Svelte stays an option for lighter builds.
-- Tailwind CSS accelerates theming, dark mode, and layout consistency.
-- JSONL files hold chat transcripts; SQLite via `tauri-plugin-sql` powers optional search.
-
-### Hardware Scan and Orchestration
-- Rust commands use `sysinfo` plus OS-specific helpers (WMI, `system_profiler`, `lspci`, `nvidia-smi`) to profile CPU, GPU, RAM, and disk.
-- Model selection consults the curated catalog JSON (minimums vs. optimal specs) to recommend the best fit.
-- Process orchestration starts and health-checks Ollama on `http://localhost:11434`.
-
-### LLM Runtime and Model Delivery
-- Ollama provides the local inference runtime with native installers per OS.
-- First-run workflow silently installs Ollama, then calls `/api/pull` to download the recommended model while streaming progress.
-- Networking binds to `127.0.0.1` to preserve offline privacy.
-- Optional Python sidecar (Version 2) loads GGUF models via `llama-cpp-python`, giving a daemon-free alternative for bundled installers.
-
-### Installers, Updates, and Signing
-- Windows bundles ship as MSI (WiX under the hood) or optional MSIX with EV code signing.
-- macOS builds target DMG, notarized with Apple Developer ID; Tauri updater handles delta releases.
-- Linux outputs AppImage or `.deb`, packaging dependencies and preflight checks.
-- App auto-updates ride the Tauri updater service; models update on demand through the UI.
-- Dual editions supported via feature flags and configs: `npm run tauri:build:ollama` for the native Ollama installer, `npm run tauri:build:python` for the llama-cpp Python sidecar.
-
-### Background Service Hardening (Optional)
-- Windows can register a helper service or rely on per-user startup.
-- macOS LaunchAgents and Linux systemd user units keep Ollama available across sessions.
-
-### Privacy, Logging, and Diagnostics
-- Default posture is zero telemetry; any future collection requires explicit opt-in.
-- Local rotating logs (Rust `tracing`) capture diagnostics; an in-app screen exposes summaries and copyable reports.
-- Encryption at rest leverages OS keychains plus libsodium when user passphrases are enabled.
-
-### Optional Add-ons
-- Local RAG uses embedded Qdrant or SQLite vectors with Ollama embeddings.
-- Vision support targets `llama3.2-vision`; voice features rely on Whisper or faster-whisper.
-- Custom model import accepts `.gguf` and `.ggml` packages dropped into the Models folder.
-
-### Platform Notes
-- macOS prioritizes Metal/MPS acceleration with native Ollama builds.
-- Windows detects CUDA vs. DirectML and falls back to CPU if needed.
-- Linux balances CUDA when present and keeps CPU-only mode ready, bundling OpenCL or libc++ where required.
-
-### Team Skills Snapshot
-- Rust and Tauri expertise for orchestration and installer plumbing.
-- React-focused frontend talent for the chat UI.
-- Release engineering covering signing, notarization, and hosted updates.
-- QA capable of multi-OS validation across GPU and CPU permutations.
-
-## Running the MVP
-
-The current prototype focuses on backend orchestration and a lightweight local chat interface backed by stubbed services.
-
-```bash
-# Make the helper executable the first time.
-chmod +x scripts/setup_and_run.sh
-
-# Launch the combined dev build (both runtimes available).
-bash scripts/setup_and_run.sh
-
-# Launch the Ollama-only edition.
-bash scripts/setup_and_run.sh ollama
-
-# Launch the Python llama.cpp sidecar edition.
-bash scripts/setup_and_run.sh python
+```
+Audio File (any format)
+    ↓
+FFmpeg (bundled) - converts to 16kHz mono WAV
+    ↓
+Whisper AI Model (bundled) - transcribes speech
+    ↓
+Text Output - 100% offline
 ```
 
-> The helper script expects a full Tauri project at `src-tauri/`. If those files are not present yet, it will stop after provisioning the installer workspace.
+**Tech Stack:**
+- **Frontend**: HTML/CSS/JavaScript (minimalist UI)
+- **Backend**: Rust + Tauri (lightweight, secure)
+- **AI Model**: Whisper tiny (ggml-tiny.bin, 77MB)
+- **Audio Processing**: FFmpeg (bundled, 481KB)
 
-> The execution sandbox used for development may block opening listening ports; if you encounter permission errors, run the command outside the restricted environment. The server serves `public/index.html`, offering a two-pane interface with hardware info and a stubbed chat.
+## 📁 Project Structure
 
-Running inside the desktop shell launches a first-run wizard that:
-- Detects local hardware and prepares the `~/PrivateAI` directory tree.
-- Checks for a native Ollama installation (installing silently when missing).
-- Starts the Ollama service, pulls the selected model, and saves configuration.
-- Opens the chat interface bound directly to Ollama’s REST API.
-- Optionally starts an embedded Python sidecar (llama-cpp) when the **Python llama.cpp sidecar** runtime is selected.
+```
+privateai-voice/
+├── public/                      # Frontend UI
+│   ├── index.html              # Main interface
+│   ├── styles.css              # Notion-style CSS
+│   └── app.js                  # UI logic
+├── src-tauri/
+│   ├── src/
+│   │   ├── main.rs             # Tauri app entry point
+│   │   └── transcription.rs    # Whisper + FFmpeg integration
+│   ├── tauri.conf.json         # App configuration & bundling
+│   └── Cargo.toml              # Rust dependencies
+├── Models/
+│   └── voice/
+│       └── ggml-tiny.bin       # Whisper AI model (bundled)
+└── binaries/
+    └── macos/
+        └── ffmpeg-aarch64-apple-darwin  # FFmpeg binary (bundled)
+```
 
-### Runtime options
+## 🛠️ Development Setup
 
-- **Ollama (default):** Full integration with the native daemon, streamed responses, and automatic model pulls.
-- **Python sidecar (Version 2):** Runs GGUF models via `llama-cpp-python` without requiring Ollama.
-  1. Install the dependencies listed in `python/requirements.txt` (preferably inside a virtualenv).
-  2. Download a GGUF model (e.g., `gemma-1b-it-q4_0.gguf`) into `~/PrivateAI/Models`.
-  3. Choose **Python llama.cpp sidecar** in the wizard; the app will start the sidecar and verify health.
-  See `python/README.md` for detailed instructions and environment variables.
+### Prerequisites
 
-## System Overview
+- **Node.js** / npm (for building frontend)
+- **Rust toolchain** with Cargo ([rustup.rs](https://rustup.rs))
+- **Tauri CLI**: `cargo install tauri-cli`
+- **macOS 11+**, Windows 10+, or modern Linux
+- **FFmpeg** (development only): `brew install ffmpeg` (macOS)
 
-| Component               | Responsibilities                                                   |
-| ----------------------- | ------------------------------------------------------------------ |
-| Installer and Scanner   | Detect operating system and hardware, install prerequisites, verify resources. |
-| Model Manager           | Map specs to a curated catalog and download the best model.        |
-| Runtime Engine (Ollama) | Serve local inference on `localhost:11434`.                        |
-| App Controller          | Orchestrate setup, start and stop services, updates, and logging.  |
-| Chat UI                 | Provide a ChatGPT-style interface with history, streaming, and settings. |
-| Local Storage Layer     | Store chats, configs, logs, and cached models under `~/PrivateAI/`. |
+### Download Whisper Model
 
-## User Journey
+```bash
+# Download the Whisper tiny model
+cd Models/voice
+curl -L -o ggml-tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+```
 
-1. **Download Installer**
-2. **System Scan** -- Collect OS, RAM, GPU, VRAM, disk, and network status.
-3. **Model Recommendation** -- Display recommended model with option to override.
-4. **Install Ollama and Model** -- Download dependencies, show progress, verify checksums.
-5. **Verification and Setup Complete** -- Validate services and write config.
-6. **Launch Chat UI** -- Start the local server and open the desktop client.
-7. **Auto-save Chats** -- Persist conversations as JSONL under `~/PrivateAI/Chats`.
+### Run Development Server
 
-## Hardware Detection
+```bash
+npm install
+npm run tauri:dev
+```
 
-The scanner matches user systems with compatible models by collecting:
+The app will open with hot-reload enabled. Changes to frontend files reload instantly, Rust changes trigger rebuild.
 
-- Operating system (Windows, macOS, or Linux)
-- CPU vendor and core count
-- GPU vendor and VRAM capacity
-- Total RAM
-- Free disk space
-- Network availability
+## 📦 Building for Production
 
-Example output:
+### Build Installers
 
+```bash
+npm run tauri:build
+```
+
+This creates platform-specific installers in `src-tauri/target/release/bundle/`:
+- **macOS**: `.dmg` and `.app`
+- **Windows**: `.msi` installer
+- **Linux**: `.AppImage` and `.deb`
+
+### What Gets Bundled
+
+The production build automatically includes:
+- ✅ Whisper model (`Models/voice/ggml-tiny.bin`) - 77MB
+- ✅ FFmpeg binary (`binaries/macos/ffmpeg-aarch64-apple-darwin`) - 481KB
+- ✅ All frontend assets (HTML/CSS/JS)
+
+**Total app size: ~78MB** - Everything users need, zero external dependencies!
+
+### Cross-Platform Builds
+
+For Windows/Linux, add FFmpeg binaries to:
+```
+binaries/
+├── macos/ffmpeg-aarch64-apple-darwin
+├── windows/ffmpeg-x86_64-pc-windows-msvc.exe
+└── linux/ffmpeg-x86_64-unknown-linux-gnu
+```
+
+Update `tauri.conf.json` to bundle all platforms.
+
+## 🎯 Usage
+
+### Basic Workflow
+
+1. **Launch App** - Double-click the installed app
+2. **Choose File** - Click "Choose file" and select your audio
+   - Supports: MP3, MP4, M4A, WAV, OGG, FLAC, AAC, WMA, WEBM
+   - Videos work too (extracts audio automatically)
+3. **Select Language** (optional) - Choose from 10+ languages or use auto-detect
+4. **Transcribe** - Click the button and wait (typically 1-2 minutes for 3-min audio)
+5. **Copy/Export** - Copy to clipboard or save the text
+
+### What Happens Automatically
+
+- **Non-WAV files**: Auto-converted to 16kHz mono WAV using FFmpeg
+- **Stereo audio**: Auto-converted to mono
+- **Wrong sample rate**: Auto-resampled to 16kHz
+- **Temp files**: Auto-cleaned up after transcription
+
+## ⚙️ Configuration
+
+### Change Whisper Model
+
+Want better accuracy? Use a larger model:
+
+1. Download model from [Whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp)
+2. Replace `Models/voice/ggml-tiny.bin`
+3. Update path in `src-tauri/src/transcription.rs:119`
+
+**Model sizes:**
+- `tiny` (77MB) - Fast, good for most use cases
+- `base` (142MB) - Better accuracy
+- `small` (466MB) - High accuracy
+- `medium` (1.5GB) - Very high accuracy
+- `large` (2.9GB) - Best accuracy (slower)
+
+### Customize UI
+
+Edit `public/styles.css` to change colors, fonts, or layout. The current theme is minimalist black and white inspired by Notion.
+
+## 🔧 Troubleshooting
+
+### "Model not found" error
+- Ensure `Models/voice/ggml-tiny.bin` exists
+- Check file size is ~77MB (not corrupted)
+
+### "FFmpeg failed" error
+- Verify `binaries/macos/ffmpeg-aarch64-apple-darwin` exists and is executable
+- Try `chmod +x binaries/macos/ffmpeg-aarch64-apple-darwin`
+
+### Transcription is inaccurate
+- Use 16kHz mono WAV for best results
+- Try a larger Whisper model (base, small, medium)
+- Specify the correct language instead of auto-detect
+
+### App is slow
+- Whisper tiny is optimized for speed
+- Larger models (base, small) are slower but more accurate
+- Consider GPU acceleration (requires different Whisper build)
+
+## 📋 Packaging & Distribution
+
+### macOS
+
+```bash
+# Build
+npm run tauri:build
+
+# Sign (optional but recommended)
+codesign --force --deep --sign "Developer ID Application: Your Name" "src-tauri/target/release/bundle/macos/PrivateAI Voice.app"
+
+# Notarize (for distribution outside App Store)
+xcrun notarytool submit "src-tauri/target/release/bundle/dmg/PrivateAI Voice_0.1.0_aarch64.dmg" \
+  --apple-id "your@email.com" \
+  --team-id "TEAMID" \
+  --password "app-specific-password" \
+  --wait
+```
+
+### Windows
+
+- Code-sign the `.msi` installer for Windows SmartScreen
+- Use a certificate from a trusted CA
+
+### Linux
+
+- Both `.AppImage` (universal) and `.deb` (Debian/Ubuntu) are created
+- Consider `.rpm` for Fedora/RHEL users
+
+## 🎨 Customization
+
+### Product Name & Icons
+
+Edit `src-tauri/tauri.conf.json`:
 ```json
 {
-  "os": "Windows 11",
-  "ram_gb": 16,
-  "gpu": "NVIDIA RTX 3060",
-  "vram_gb": 8,
-  "disk_free_gb": 150
+  "package": {
+    "productName": "Your App Name",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "bundle": {
+      "identifier": "com.yourcompany.yourapp",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ]
+    }
+  }
 }
 ```
 
-## Model Catalog and Recommendation Logic
+### Add More Languages
 
-| Model            | Min RAM | GPU VRAM | Disk | Use Case          |
-| ---------------- | ------- | -------- | ---- | ----------------- |
-| phi3:mini        | 6 GB    | --       | 3 GB | Lightweight chat  |
-| llama3.1:8b      | 12 GB   | 6 GB     | 5 GB | Balanced default  |
-| deepseek-r1:7b   | 16 GB   | 8 GB     | 6 GB | Reasoning focus   |
-| llama3.1:70b     | 32 GB   | 24 GB    | 40 GB | Power user mode |
-
-The selector scores every model by meeting minimum requirements, preferring optimal matches, and prioritizing higher-quality options within the device's limits.
-
-## Installation Workflow
-
-1. **Install Ollama**
-   - Download if missing and perform a silent install.
-   - Start the Ollama service.
-2. **Download Recommended Model**
-   - Stream with progress reporting and checksum validation.
-   - Cache model artifacts under `~/PrivateAI/Models`.
-3. **Configure Application**
-   - Write config to `~/PrivateAI/Config/app.json`.
-   - Prepare folder tree:
-
-```
-~/PrivateAI/
-├── Chats/
-├── Config/
-├── Models/
-├── Logs/
-└── Index/
+Edit `public/index.html` to add language options:
+```html
+<option value="hi">Hindi</option>
+<option value="ar">Arabic</option>
 ```
 
-## Chat Interface
+Full list: [Whisper supported languages](https://github.com/openai/whisper#available-models-and-languages)
 
-- ChatGPT-style layout with sidebar history and markdown rendering.
-- Streaming responses, code block formatting, and model switcher.
-- "Open Chats Folder" shortcut and settings modal for theme, privacy, and model options.
-- Messages stored as JSONL lines, for example:
+## 📝 License
 
-```json
-{"role":"user","content":"Explain RAG."}
-{"role":"assistant","content":"RAG retrieves documents and answers with grounded context."}
-```
+This project uses:
+- **Whisper** - MIT License (OpenAI)
+- **FFmpeg** - LGPL/GPL (see FFmpeg license)
+- **Tauri** - MIT/Apache 2.0
 
-## Local Storage and Security
+Ensure compliance with all licenses when distributing.
 
-- JSONL per conversation with optional SQLite index for search.
-- Optional encryption at rest via the local keychain or OS-provided vault.
-- Application runs offline by default and prompts the user before any external connection.
-- No telemetry; licenses are shown before model downloads.
+## 🙏 Credits
 
-## Packaging and Distribution
+- **Whisper** by OpenAI - Speech recognition AI
+- **whisper.cpp** by ggerganov - C++ implementation
+- **FFmpeg** - Audio processing
+- **Tauri** - Desktop app framework
 
-| Platform | Format        | Notes                                      |
-| -------- | ------------- | ------------------------------------------ |
-| Windows  | `.msi` / `.exe` | Bundle Ollama installer and runtime dependencies. |
-| macOS    | `.dmg`        | Signed and notarized build.                |
-| Linux    | `.AppImage` / `.deb` | Include preflight dependency checks. |
+---
 
-Updates: optional auto-update for the application; manual model updates via the Settings screen.
-
-## Team Roles
-
-| Role                 | Responsibilities                                                   |
-| -------------------- | ------------------------------------------------------------------ |
-| Product Designer     | UX flows, copy, installer screens.                                 |
-| Frontend Developer   | Desktop UI, chat rendering, settings, and interaction polish.      |
-| Backend/Infra Dev    | Hardware scan, Ollama orchestration, configuration management.     |
-| DevOps               | Build and sign installers, manage update channels and CI/CD.       |
-| QA                   | Cross-platform testing and fallback validation.                    |
-
-## Development Milestones
-
-| Phase | Deliverable                                   | Duration |
-| ----- | --------------------------------------------- | -------- |
-| 1     | MVP with fixed model and basic chat           | 2 weeks  |
-| 2     | Automated detection and installer flow        | +1 week  |
-| 3     | Polished UX, local storage, update mechanisms | +2 weeks |
-| 4     | Optional enhancements (RAG, encryption, voice, vision) | Ongoing |
-
-## Future Add-ons
-
-- Offline RAG over local documents.
-- Vision model support (for example, llama3.2-vision).
-- Local voice input and output pipeline.
-- Multi-user profiles.
-- Custom model import for `.gguf` and `.ggml` formats.
-
-## Development Notes
-
-- Early backend work includes a stubbed hardware scanner at `src/hardware/hardwareScanStub.js`, returning canned specs while real detection is under development.
-- The stub feeds an HTTP-compatible handler at `src/api/hardwareHandler.js`, allowing quick integration with a prototype server.
-- `src/installer/runInstaller.js` orchestrates the stubbed hardware scan, storage layout creation, runtime bootstrap, and config writing for local testing.
-- `src/ollama/ollamaBootstrap.js` simulates Ollama installation, service start, and model pulls while real integrations are pending.
-- `python/sidecar.py` hosts the Version 2 llama-cpp runtime; the Tauri shell can start/stop this sidecar when the Python backend is selected.
-- The Tauri shell (`src-tauri/src`) exposes commands for setup and chat, and `public/app.js` drives the first-run wizard with streaming responses directly from Ollama.
-- Chat history is stored as JSONL per session in the selected chats directory; the wizard’s “Chat history folder” control updates `paths.chats`, and both runtimes stream responses while persisting turns and maintaining a bounded in-memory context window.
-
-## Flow Diagram
-
-```
-+---------------------------+
-|       App Installer       |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-|      Hardware Scanner     |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-|   Model Selector Engine   |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-| Install Ollama and Model  |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-|   Start Local Server      |
-|     (localhost:11434)     |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-|    Chat UI (Desktop)      |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-|   Save Chats Locally      |
-|    ~/PrivateAI/Chats      |
-+---------------------------+
-```
-
-## License
-
-TBD -- evaluate licensing for bundled models and open source dependencies.
+**Made with ❤️ for offline, privacy-focused AI transcription**

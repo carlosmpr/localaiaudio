@@ -7,7 +7,7 @@
     "withGlobalTauri": true
   },
   "package": {
-    "productName": "PrivateAI",
+    "productName": "PrivateAI Voice",
     "version": "0.1.0"
   },
   "tauri": {
@@ -22,21 +22,23 @@
       },
       "fs": {
         "all": true,
-        "scope": ["$HOME/PrivateAI/**", "$HOME/**"]
+        "scope": ["$HOME/**", "$AUDIO/**", "$DOWNLOAD/**", "$DESKTOP/**", "$DOCUMENT/**"]
       },
       "dialog": {
         "all": false,
         "open": true,
-        "save": false
+        "save": true
       }
     },
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "com.caribbeantechs.privateai",
+      "identifier": "com.caribbeantechs.privateai.voice",
       "resources": [
-        "../python/**/*",
-        "../Models/**/*"
+        "../Models/voice/**/*"
+      ],
+      "externalBin": [
+        "../binaries/macos/ffmpeg"
       ],
       "icon": [
         "icons/32x32.png",
@@ -55,11 +57,11 @@
       {
         "fullscreen": false,
         "resizable": true,
-        "title": "PrivateAI",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 800,
-        "minHeight": 600
+        "title": "PrivateAI Voice - Offline Transcription",
+        "width": 900,
+        "height": 700,
+        "minWidth": 600,
+        "minHeight": 500
       }
     ]
   }

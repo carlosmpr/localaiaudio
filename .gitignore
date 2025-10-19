@@ -31,3 +31,4 @@ LLVM-installer.exe
 
 # Claude Code
 .claude/
+.env
