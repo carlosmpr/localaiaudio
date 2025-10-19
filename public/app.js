@@ -39,7 +39,10 @@ const state = {
   activeWorkflow: null,  // Current workflow being executed
   workflowSteps: [],     // Steps for current workflow
   currentStepIndex: 0,   // Current step being executed
-  stepResults: []        // Results from completed steps
+  stepResults: [],       // Results from completed steps
+  workflowInitialInput: '', // Original user entry feeding every workflow node
+  workflowBuilderMode: 'create', // 'create' | 'edit'
+  workflowBeingEdited: null // templateId currently being edited
 };
 
 const elements = {
@@ -96,6 +99,8 @@ const elements = {
   stepperViewNav: document.getElementById('stepperViewNav'),
   stepperView: document.getElementById('stepperView'),
   workflowTitle: document.getElementById('workflowTitle'),
+  editWorkflowBtn: document.getElementById('editWorkflowBtn'),
+  deleteWorkflowBtn: document.getElementById('deleteWorkflowBtn'),
   stepperContent: document.getElementById('stepperContent'),
   newWorkflowBtn: document.getElementById('newWorkflowBtn'),
   exportResultsBtn: document.getElementById('exportResultsBtn'),
@@ -106,6 +111,7 @@ const elements = {
   closeWorkflowBuilderBtn: document.getElementById('closeWorkflowBuilderBtn'),
   cancelWorkflowBuilderBtn: document.getElementById('cancelWorkflowBuilderBtn'),
   saveWorkflowBtn: document.getElementById('saveWorkflowBtn'),
+  workflowBuilderTitle: document.getElementById('workflowBuilderTitle'),
   workflowName: document.getElementById('workflowName'),
   workflowDescription: document.getElementById('workflowDescription'),
   workflowIcon: document.getElementById('workflowIcon'),
@@ -306,6 +312,44 @@ const WORKFLOW_TEMPLATES = {
   }
 };
 
+/**
+ * Build the prompt sent to the runtime for a workflow node.
+ * Ensures every node always sees the original user entry and, when available,
+ * the previous node's output to maintain chain fidelity.
+ */
+function buildWorkflowPrompt(step, nodeIndex, initialInputOverride) {
+  const instructions = step?.systemPrompt || '';
+  const originalEntry = (initialInputOverride ?? state.workflowInitialInput ?? '').trim();
+  const previousOutput = nodeIndex > 0 ? (state.stepResults[nodeIndex - 1] || '').trim() : '';
+  const hasInputPlaceholder = instructions.includes('{input}');
+
+  const instructionsWithInput = hasInputPlaceholder
+    ? instructions.replace('{input}', originalEntry)
+    : instructions;
+
+  const contextSections = [];
+
+  if (nodeIndex === 0) {
+    if (!hasInputPlaceholder && originalEntry) {
+      contextSections.push(`[User Entry]\n${originalEntry}`);
+    }
+  } else {
+    if (originalEntry) {
+      contextSections.push(`[Original User Entry]\n${originalEntry}`);
+    }
+    if (previousOutput) {
+      contextSections.push(`[Previous Step Output]\n${previousOutput}`);
+    }
+  }
+
+  const contextBlock = contextSections.length ? `\n\n${contextSections.join('\n\n')}` : '';
+  return `${instructionsWithInput}${contextBlock}\n\nRespond with the required output for this step.`;
+}
+
+function isCustomWorkflowId(templateId) {
+  return typeof templateId === 'string' && templateId.startsWith('custom-');
+}
+
 // View navigation
 function switchToView(viewName) {
   // Don't allow view switching if model is not active (setup not complete)
@@ -358,12 +402,43 @@ function startWorkflow(templateId) {
   if (!template) return;
 
   state.activeWorkflow = templateId;
-  state.workflowSteps = JSON.parse(JSON.stringify(template.steps)); // Deep copy
+  const workflowSteps = Array.isArray(template.steps) ? template.steps.slice(0, 10) : [];
+  if (template.steps?.length > 10) {
+    console.warn(`Workflow ${templateId} has more than 10 steps. Only the first 10 will run.`);
+  }
+  state.workflowSteps = JSON.parse(JSON.stringify(workflowSteps)); // Deep copy constrained to 10 steps
   state.currentStepIndex = 0;
   state.stepResults = [];
+  state.workflowInitialInput = '';
 
   if (elements.workflowTitle) {
     elements.workflowTitle.textContent = template.name;
+  }
+
+  if (elements.editWorkflowBtn) {
+    const isCustom = isCustomWorkflowId(templateId);
+    if (isCustom) {
+      elements.editWorkflowBtn.classList.remove('hidden');
+      elements.editWorkflowBtn.disabled = false;
+      elements.editWorkflowBtn.dataset.template = templateId;
+    } else {
+      elements.editWorkflowBtn.classList.add('hidden');
+      elements.editWorkflowBtn.disabled = true;
+      delete elements.editWorkflowBtn.dataset.template;
+    }
+  }
+
+  if (elements.deleteWorkflowBtn) {
+    const isCustom = isCustomWorkflowId(templateId);
+    if (isCustom) {
+      elements.deleteWorkflowBtn.classList.remove('hidden');
+      elements.deleteWorkflowBtn.disabled = false;
+      elements.deleteWorkflowBtn.dataset.template = templateId;
+    } else {
+      elements.deleteWorkflowBtn.classList.add('hidden');
+      elements.deleteWorkflowBtn.disabled = true;
+      delete elements.deleteWorkflowBtn.dataset.template;
+    }
   }
 
   if (elements.exportResultsBtn) {
@@ -532,6 +607,7 @@ async function executeAutomatedWorkflow(template) {
   // Initialize
   state.currentStepIndex = 0;
   state.stepResults = [];
+  state.workflowInitialInput = userInput;
 
   // Render progress view
   renderWorkflowProgress(template);
@@ -562,17 +638,12 @@ async function executeWorkflowNode(nodeIndex, initialInput, step) {
     throw new Error('No model is active. Please run setup first.');
   }
 
-  // Build the prompt for this node
-  let promptForModel;
-
-  if (nodeIndex === 0) {
-    // First node: use initial user input
-    promptForModel = step.systemPrompt.replace('{input}', initialInput);
-  } else {
-    // Subsequent nodes: pass the previous node's output
-    const previousResult = state.stepResults[nodeIndex - 1];
-    promptForModel = step.systemPrompt + '\n\n[Output from previous step]:\n' + previousResult + '\n\nNow complete your task based on the above output.';
+  // Ensure the original user entry is tracked for downstream nodes
+  if (!state.workflowInitialInput && initialInput) {
+    state.workflowInitialInput = initialInput;
   }
+
+  const promptForModel = buildWorkflowPrompt(step, nodeIndex, initialInput);
 
   let response = '';
 
@@ -848,20 +919,16 @@ async function executeWorkflowStep(stepIndex, userInput) {
     return;
   }
 
-  // Build the prompt for the model
-  let promptForModel = step.systemPrompt;
+  const normalizedInput = (userInput || '').trim();
 
-  // Replace {input} placeholder if present and we have user input
-  if (requiresUserInput && userInput) {
-    promptForModel = promptForModel.replace('{input}', userInput);
+  // Capture the originating user entry so downstream nodes always have access
+  if (!state.workflowInitialInput && normalizedInput) {
+    state.workflowInitialInput = normalizedInput;
+  } else if (stepIndex === 0 && normalizedInput) {
+    state.workflowInitialInput = normalizedInput;
   }
 
-  // For workflows, we pass the FULL result from the previous step as context
-  // This creates a proper node-by-node chain where each node builds on the previous
-  if (stepIndex > 0 && state.stepResults[stepIndex - 1]) {
-    const previousResult = state.stepResults[stepIndex - 1];
-    promptForModel = `[Context from previous step]:\n${previousResult}\n\n[Current task]:\n${promptForModel}`;
-  }
+  const promptForModel = buildWorkflowPrompt(step, stepIndex, state.workflowInitialInput || normalizedInput);
 
   // Disable the button and show loading state
   const stepCard = elements.stepperContent.querySelector(`[data-step-index="${stepIndex}"]`);
@@ -1016,17 +1083,59 @@ function exportWorkflowResults() {
 // Custom workflow builder state
 let customWorkflowSteps = [];
 
+function updateAddStepButtonState() {
+  if (!elements.addStepBtn) return;
+
+  const maxReached = customWorkflowSteps.length >= 10;
+  elements.addStepBtn.disabled = maxReached;
+  elements.addStepBtn.textContent = maxReached ? 'Maximum of 10 steps reached' : '+ Add Step';
+}
+
 // Open workflow builder modal
-function openWorkflowBuilder() {
+function openWorkflowBuilder({ mode = 'create', templateId = null } = {}) {
+  const isEdit = mode === 'edit' && templateId && WORKFLOW_TEMPLATES[templateId];
+  state.workflowBuilderMode = isEdit ? 'edit' : 'create';
+  state.workflowBeingEdited = isEdit ? templateId : null;
+
+  const template = isEdit ? WORKFLOW_TEMPLATES[templateId] : null;
+
+  if (elements.workflowBuilderTitle) {
+    elements.workflowBuilderTitle.textContent = isEdit ? 'Edit Workflow' : 'Create Custom Workflow';
+  }
+  if (elements.saveWorkflowBtn) {
+    elements.saveWorkflowBtn.textContent = isEdit ? 'Save Changes' : 'Create Workflow';
+  }
+
+  if (elements.workflowName) {
+    elements.workflowName.value = template?.name || '';
+  }
+  if (elements.workflowDescription) {
+    elements.workflowDescription.value = template?.description || '';
+  }
+  if (elements.workflowIcon) {
+    elements.workflowIcon.value = template?.icon || '📝';
+  }
+
   customWorkflowSteps = [];
 
-  if (elements.workflowName) elements.workflowName.value = '';
-  if (elements.workflowDescription) elements.workflowDescription.value = '';
-  if (elements.workflowIcon) elements.workflowIcon.value = '📝';
-  if (elements.workflowStepsBuilder) elements.workflowStepsBuilder.innerHTML = '';
+  if (elements.workflowStepsBuilder) {
+    elements.workflowStepsBuilder.innerHTML = '';
+  }
 
-  // Add first step by default
-  addWorkflowStep();
+  if (isEdit && Array.isArray(template?.steps)) {
+    customWorkflowSteps = template.steps.map((step) => ({
+      title: step.title || '',
+      systemPrompt: step.systemPrompt || ''
+    })).slice(0, 10);
+    renderWorkflowStepsBuilder();
+    if (customWorkflowSteps.length === 0) {
+      addWorkflowStep();
+    }
+  } else {
+    addWorkflowStep();
+  }
+
+  updateAddStepButtonState();
 
   if (elements.workflowBuilderModal) {
     elements.workflowBuilderModal.classList.remove('hidden');
@@ -1039,10 +1148,35 @@ function closeWorkflowBuilder() {
     elements.workflowBuilderModal.classList.add('hidden');
   }
   customWorkflowSteps = [];
+  state.workflowBuilderMode = 'create';
+  state.workflowBeingEdited = null;
+
+  if (elements.workflowBuilderTitle) {
+    elements.workflowBuilderTitle.textContent = 'Create Custom Workflow';
+  }
+  if (elements.saveWorkflowBtn) {
+    elements.saveWorkflowBtn.textContent = 'Create Workflow';
+  }
+
+  if (elements.workflowName) elements.workflowName.value = '';
+  if (elements.workflowDescription) elements.workflowDescription.value = '';
+  if (elements.workflowIcon) elements.workflowIcon.value = '📝';
+
+  if (elements.workflowStepsBuilder) {
+    elements.workflowStepsBuilder.innerHTML = '';
+  }
+
+  updateAddStepButtonState();
 }
 
 // Add a new workflow step
 function addWorkflowStep() {
+  if (customWorkflowSteps.length >= 10) {
+    alert('Custom workflows support a maximum of 10 steps.');
+    updateAddStepButtonState();
+    return;
+  }
+
   const stepIndex = customWorkflowSteps.length;
   const step = {
     title: '',
@@ -1090,12 +1224,15 @@ function addWorkflowStep() {
       customWorkflowSteps[stepIndex].systemPrompt = e.target.value;
     });
   }
+
+  updateAddStepButtonState();
 }
 
 // Remove a workflow step
 function removeWorkflowStep(index) {
   customWorkflowSteps.splice(index, 1);
   renderWorkflowStepsBuilder();
+  updateAddStepButtonState();
 }
 
 // Re-render workflow steps builder
@@ -1149,13 +1286,15 @@ function renderWorkflowStepsBuilder() {
       });
     }
   });
+
+  updateAddStepButtonState();
 }
 
 // Save custom workflow
 function saveCustomWorkflow() {
   const name = elements.workflowName?.value.trim();
   const description = elements.workflowDescription?.value.trim();
-  const icon = elements.workflowIcon?.value.trim() || '📝';
+  const iconInput = elements.workflowIcon?.value.trim() || '';
 
   if (!name) {
     alert('Please enter a workflow name');
@@ -1167,6 +1306,11 @@ function saveCustomWorkflow() {
     return;
   }
 
+  if (customWorkflowSteps.length > 10) {
+    alert('Custom workflows support a maximum of 10 steps.');
+    return;
+  }
+
   // Validate all steps have titles and prompts
   for (let i = 0; i < customWorkflowSteps.length; i++) {
     if (!customWorkflowSteps[i].title || !customWorkflowSteps[i].systemPrompt) {
@@ -1175,30 +1319,38 @@ function saveCustomWorkflow() {
     }
   }
 
+  const isEdit = state.workflowBuilderMode === 'edit' &&
+    state.workflowBeingEdited &&
+    Object.prototype.hasOwnProperty.call(WORKFLOW_TEMPLATES, state.workflowBeingEdited);
+
+  const templateId = isEdit ? state.workflowBeingEdited : ('custom-' + Date.now());
+  const baseTemplate = isEdit ? (WORKFLOW_TEMPLATES[templateId] || {}) : {};
+  const icon = iconInput || baseTemplate?.icon || '📝';
+
   // Create the custom workflow template
-  const templateId = 'custom-' + Date.now();
   const template = {
+    ...baseTemplate,
     name,
     icon,
-    description: description || 'Custom workflow',
-    inputPrompt: 'Enter your initial input:',
-    acceptsFile: false,
-    steps: customWorkflowSteps.map(step => ({
+    description: description || baseTemplate?.description || 'Custom workflow',
+    inputPrompt: baseTemplate?.inputPrompt || 'Enter your initial input:',
+    acceptsFile: baseTemplate?.acceptsFile ?? false,
+    steps: customWorkflowSteps.slice(0, 10).map((step) => ({
       title: step.title,
       systemPrompt: step.systemPrompt
     }))
   };
 
-  // Add to templates
+  // Add/update template collection
   WORKFLOW_TEMPLATES[templateId] = template;
 
-  // Save to localStorage
+  // Persist
   saveCustomWorkflows();
 
-  // Add to sidebar
+  // Reflect in sidebar UI
   addCustomWorkflowToSidebar(templateId, template);
 
-  // Close modal and start the workflow
+  // Close modal and reload workflow view
   closeWorkflowBuilder();
   startWorkflow(templateId);
 }
@@ -1239,7 +1391,13 @@ function addCustomWorkflowToSidebar(templateId, template) {
 
   // Check if already exists
   const existing = templateList.querySelector(`[data-template="${templateId}"]`);
-  if (existing) return;
+  if (existing) {
+    const iconEl = existing.querySelector('.template-icon');
+    const nameEl = existing.querySelector('.template-name');
+    if (iconEl) iconEl.textContent = template.icon;
+    if (nameEl) nameEl.textContent = template.name;
+    return existing;
+  }
 
   const card = document.createElement('button');
   card.type = 'button';
@@ -1255,6 +1413,17 @@ function addCustomWorkflowToSidebar(templateId, template) {
   });
 
   templateList.appendChild(card);
+
+  return card;
+}
+
+function removeCustomWorkflowFromSidebar(templateId) {
+  const templateList = document.querySelector('.template-list');
+  if (!templateList) return;
+  const existing = templateList.querySelector(`[data-template="${templateId}"]`);
+  if (existing) {
+    existing.remove();
+  }
 }
 
 // Reset workflow
@@ -1263,9 +1432,22 @@ function resetWorkflow() {
   state.workflowSteps = [];
   state.currentStepIndex = 0;
   state.stepResults = [];
+  state.workflowInitialInput = '';
 
   if (elements.workflowTitle) {
     elements.workflowTitle.textContent = 'Select a workflow to begin';
+  }
+
+  if (elements.editWorkflowBtn) {
+    elements.editWorkflowBtn.classList.add('hidden');
+    elements.editWorkflowBtn.disabled = true;
+    delete elements.editWorkflowBtn.dataset.template;
+  }
+
+  if (elements.deleteWorkflowBtn) {
+    elements.deleteWorkflowBtn.classList.add('hidden');
+    elements.deleteWorkflowBtn.disabled = true;
+    delete elements.deleteWorkflowBtn.dataset.template;
   }
 
   if (elements.exportResultsBtn) {
@@ -3048,7 +3230,21 @@ function attachEventListeners() {
   });
 
   // Workflow controls
-  elements.newWorkflowBtn?.addEventListener('click', openWorkflowBuilder);
+  elements.newWorkflowBtn?.addEventListener('click', () => {
+    openWorkflowBuilder({ mode: 'create' });
+  });
+  elements.editWorkflowBtn?.addEventListener('click', () => {
+    const templateId = elements.editWorkflowBtn?.dataset.template;
+    if (templateId) {
+      openWorkflowBuilder({ mode: 'edit', templateId });
+    }
+  });
+  elements.deleteWorkflowBtn?.addEventListener('click', () => {
+    const templateId = elements.deleteWorkflowBtn?.dataset.template;
+    if (templateId) {
+      deleteCustomWorkflow(templateId);
+    }
+  });
   elements.exportResultsBtn?.addEventListener('click', exportWorkflowResults);
 
   // Workflow builder controls
@@ -3264,3 +3460,25 @@ async function bootstrap() {
 }
 
 bootstrap();
+function deleteCustomWorkflow(templateId) {
+  if (!isCustomWorkflowId(templateId)) {
+    alert('Only custom workflows can be deleted.');
+    return;
+  }
+
+  if (!WORKFLOW_TEMPLATES[templateId]) {
+    alert('Workflow not found.');
+    return;
+  }
+
+  const confirmed = confirm('Delete this workflow permanently? This action cannot be undone.');
+  if (!confirmed) return;
+
+  delete WORKFLOW_TEMPLATES[templateId];
+  removeCustomWorkflowFromSidebar(templateId);
+  saveCustomWorkflows();
+
+  if (state.activeWorkflow === templateId) {
+    resetWorkflow();
+  }
+}

@@ -187,6 +187,8 @@
           <div class="stepper-main">
             <div class="stepper-header">
               <h2 id="workflowTitle">Select a workflow to begin</h2>
+              <button type="button" id="editWorkflowBtn" class="secondary small hidden">Edit Workflow</button>
+              <button type="button" id="deleteWorkflowBtn" class="danger small hidden">Delete Workflow</button>
               <button type="button" id="exportResultsBtn" class="secondary small hidden">Export Results</button>
             </div>
 
@@ -262,7 +264,7 @@
     <div id="workflowBuilderModal" class="modal hidden">
       <div class="modal-content modal-large">
         <div class="modal-header">
-          <h2>Create Custom Workflow</h2>
+          <h2 id="workflowBuilderTitle">Create Custom Workflow</h2>
           <button type="button" id="closeWorkflowBuilderBtn" class="close-btn">×</button>
         </div>
         <div class="modal-body">
