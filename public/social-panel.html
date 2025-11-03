@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Publishing Control Panel</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="share-body">
+    <div class="share-container">
+      <header class="share-header">
+        <h1>Publishing Control Panel</h1>
+        <p class="subtitle">
+          Review your transcription, refine the draft, and launch social platforms when you're ready
+          to post.
+        </p>
+      </header>
+
+      <main class="share-main">
+        <section class="draft-section">
+          <div class="section-header">
+            <h2>Draft text</h2>
+            <span id="characterCount" class="character-count">0 characters</span>
+          </div>
+
+          <textarea
+            id="draftText"
+            placeholder="Your transcription will appear here. Tweak it before sharing or trim it into a shorter post."
+          ></textarea>
+
+          <div class="draft-actions">
+            <button id="copyDraftBtn" class="btn btn-small">Copy draft</button>
+            <button id="clearDraftBtn" class="btn btn-ghost btn-small">Clear</button>
+          </div>
+
+          <div id="panelStatus" class="status hidden"></div>
+
+          <p class="draft-hint">
+            Tip: We'll copy the draft to your clipboard when you open a platform so you can paste it
+            immediately.
+          </p>
+        </section>
+
+        <section class="platform-section">
+          <h2>Open social platforms</h2>
+          <div class="platform-grid">
+            <button class="platform-btn" data-platform="linkedin">LinkedIn</button>
+            <button class="platform-btn" data-platform="tiktok">TikTok</button>
+            <button class="platform-btn" data-platform="youtube">YouTube</button>
+            <button class="platform-btn" data-platform="instagram">Instagram</button>
+            <button class="platform-btn" data-platform="x">X (Twitter)</button>
+          </div>
+          <p class="platform-hint">
+            Each button opens the official publishing page in a dedicated window. Ensure you're
+            signed in before uploading.
+          </p>
+
+          <div class="linkedin-actions">
+            <h3>LinkedIn quick actions</h3>
+            <p class="linkedin-hint">
+              After the LinkedIn window loads, use these helpers instead of hunting for the buttons.
+            </p>
+            <div class="linkedin-action-buttons">
+              <button id="linkedinStartPostBtn" class="btn btn-small" disabled>Open post composer</button>
+              <button id="linkedinOpenVideoBtn" class="btn btn-small" disabled>Open video picker</button>
+            </div>
+          </div>
+
+          <div class="media-reference">
+            <h3>Latest media file</h3>
+            <p id="mediaPathDisplay" class="media-path media-path--empty">No media file captured yet.</p>
+            <div class="media-actions">
+              <button id="copyMediaPathBtn" class="btn btn-small" disabled>Copy path</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/social-panel.js"></script>
+  </body>
+</html>

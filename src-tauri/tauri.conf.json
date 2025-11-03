@@ -28,6 +28,9 @@
         "all": false,
         "open": true,
         "save": true
+      },
+      "window": {
+        "all": true
       }
     },
     "bundle": {

@@ -130,19 +130,19 @@ pub async fn transcribe_with_api(
 /// Get the default Whisper model path (bundled with the app)
 fn get_default_model_path() -> Result<String> {
     // Try to find the bundled model
-    // During development: Models/voice/tiny_q4k.gguf
+    // Using whisper-large-v3 for improved accuracy
     // In production build: should be in the resources folder
 
     // First try: absolute path (for development on macOS) - using correct GGML format
-    let absolute_path = "/Volumes/Carlos/private/localaiAudio/Models/voice/ggml-tiny.bin";
+    let absolute_path = "/Volumes/Carlos/private/localaiAudio/Models/voice/ggml-large-v3.bin";
     if std::path::Path::new(absolute_path).exists() {
         println!("[INFO] Found model at absolute path: {}", absolute_path);
         return Ok(absolute_path.to_string());
     }
 
-    // Second try: current directory + Models/voice/ggml-tiny.bin
+    // Second try: current directory + Models/voice/ggml-large-v3.bin
     if let Some(cwd) = std::env::current_dir().ok() {
-        let model = cwd.join("Models/voice/ggml-tiny.bin");
+        let model = cwd.join("Models/voice/ggml-large-v3.bin");
         if model.exists() {
             println!("[INFO] Found model at: {}", model.display());
             return Ok(model.to_string_lossy().to_string());
@@ -152,7 +152,7 @@ fn get_default_model_path() -> Result<String> {
     // Third try: parent directory (for dev mode when running from src-tauri)
     if let Some(cwd) = std::env::current_dir().ok() {
         if let Some(parent) = cwd.parent() {
-            let model = parent.join("Models/voice/ggml-tiny.bin");
+            let model = parent.join("Models/voice/ggml-large-v3.bin");
             if model.exists() {
                 println!("[INFO] Found model at: {}", model.display());
                 return Ok(model.to_string_lossy().to_string());
@@ -162,14 +162,14 @@ fn get_default_model_path() -> Result<String> {
 
     // Fourth try: home directory relative path
     if let Some(home) = std::env::var("HOME").ok() {
-        let model = std::path::PathBuf::from(home).join("private/localaiAudio/Models/voice/ggml-tiny.bin");
+        let model = std::path::PathBuf::from(home).join("private/localaiAudio/Models/voice/ggml-large-v3.bin");
         if model.exists() {
             println!("[INFO] Found model at: {}", model.display());
             return Ok(model.to_string_lossy().to_string());
         }
     }
 
-    anyhow::bail!("Whisper model not found. Tried:\n  - {}\n  - Current dir + Models/voice/ggml-tiny.bin\n  - Parent dir + Models/voice/ggml-tiny.bin\n  - $HOME/private/localaiAudio/Models/voice/ggml-tiny.bin\n\nPlease ensure ggml-tiny.bin is in Models/voice/", absolute_path)
+    anyhow::bail!("Whisper model not found. Tried:\n  - {}\n  - Current dir + Models/voice/ggml-large-v3.bin\n  - Parent dir + Models/voice/ggml-large-v3.bin\n  - $HOME/private/localaiAudio/Models/voice/ggml-large-v3.bin\n\nPlease ensure ggml-large-v3.bin is in Models/voice/", absolute_path)
 }
 
 /// Transcribe audio using embedded Whisper model
