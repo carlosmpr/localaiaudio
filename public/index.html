@@ -7,10 +7,35 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <div id="loadingScreen" class="loading-screen hidden">
+      <div class="loading-card">
+        <img class="loading-icon" src="/app-icon.png" alt="PrivateAI icon" />
+        <div class="loading-spinner"></div>
+        <p id="loadingMessage">Initializing PrivateAI…</p>
+      </div>
+    </div>
+
+    <div id="trialBanner" class="trial-banner hidden">
+      <div class="trial-banner-copy">
+        <strong id="trialBannerMessage">Trial active</strong>
+        <p id="trialBannerSubtext">Your trial expires soon.</p>
+      </div>
+      <div class="trial-banner-actions">
+        <button type="button" id="trialBannerAction" class="btn btn-secondary btn-small">
+          Manage License
+        </button>
+      </div>
+    </div>
+
     <div class="container">
       <header>
-        <h1>Voice Transcription</h1>
-        <p class="subtitle">Convert audio to text using local AI</p>
+        <div class="header-text">
+          <h1>Voice Transcription</h1>
+          <p class="subtitle">Convert audio to text using local AI</p>
+        </div>
+        <button type="button" id="manageLicenseBtn" class="btn btn-secondary btn-small">
+          Manage License
+        </button>
       </header>
 
       <main>
@@ -98,6 +123,179 @@
       <footer>
         <p>Powered by Whisper • 100% offline & private</p>
       </footer>
+    </div>
+
+    <!-- License Management Modal -->
+    <div id="licenseModal" class="modal hidden">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h2>Manage License</h2>
+          <button type="button" id="closeLicenseModalBtn" class="close-btn">×</button>
+        </div>
+        <div class="modal-body">
+          <div id="licenseTrialInfo" class="license-trial-info" style="display: none;">
+            <strong id="licenseTrialStatus"></strong>
+            <p id="licenseTrialMessage"></p>
+          </div>
+
+          <div id="licenseStatusMessage" class="license-status-message"></div>
+
+          <div class="license-tab-buttons">
+            <button class="license-tab-btn active" data-tab="trial">Start Trial</button>
+            <button class="license-tab-btn" data-tab="activate">Activate License</button>
+            <button class="license-tab-btn" data-tab="purchase">Purchase</button>
+            <button class="license-tab-btn" data-tab="manage">Manage</button>
+          </div>
+
+          <div id="licenseTrialTab" class="license-tab-content active">
+            <p class="license-tab-intro">
+              Try PrivateAI Voice free for 7 days. No credit card required.
+            </p>
+
+            <div class="license-features-box">
+              <strong>What's included:</strong>
+              <ul>
+                <li>Full transcription workflow</li>
+                <li>100% local audio processing</li>
+                <li>Unlimited audio length</li>
+                <li>Offline operation</li>
+                <li>Access to social sharing panel</li>
+              </ul>
+            </div>
+
+            <button id="licenseStartTrialBtn" class="primary">Start 7-Day Free Trial</button>
+            <p class="license-trial-hint">
+              After 7 days, you'll need to purchase a license to continue using PrivateAI Voice.
+            </p>
+          </div>
+
+          <div id="licenseActivateTab" class="license-tab-content">
+            <label for="licenseCodeInput">Enter Your License Code</label>
+            <textarea
+              id="licenseCodeInput"
+              rows="6"
+              placeholder="Paste your license code here...&#10;&#10;You received this via email after purchase."
+            ></textarea>
+            <p class="license-input-hint">License codes are long base64-encoded strings sent to your email after purchase.</p>
+
+            <button id="licenseActivateBtn" class="primary">Activate License</button>
+          </div>
+
+          <div id="licensePurchaseTab" class="license-tab-content">
+            <p class="license-tab-intro">
+              One-time payment. Lifetime license. No subscriptions.
+            </p>
+
+            <div class="license-pricing-tiers">
+              <div class="license-pricing-tier">
+                <div class="license-tier-info">
+                  <div class="license-tier-name">Personal</div>
+                  <div class="license-tier-devices">1 device · Lifetime updates</div>
+                </div>
+                <div class="license-tier-price">
+                  <span class="old-price">$49</span>
+                  <span class="new-price">$29.99</span>
+                  <span class="launch-badge">Launch special</span>
+                </div>
+              </div>
+
+              <div class="license-pricing-tier">
+                <div class="license-tier-info">
+                  <div class="license-tier-name">Pro</div>
+                  <div class="license-tier-devices">3 devices · Lifetime updates</div>
+                </div>
+                <div class="license-tier-price">
+                  <span class="old-price">$99</span>
+                  <span class="new-price">$49.99</span>
+                  <span class="launch-badge">Launch special</span>
+                </div>
+              </div>
+
+              <div class="license-pricing-tier">
+                <div class="license-tier-info">
+                  <div class="license-tier-name">Enterprise</div>
+                  <div class="license-tier-devices">
+                    Custom deployments tailored to your workflows ·
+                    <a href="mailto:info@the-aideveloper.com?subject=PrivateAI%20Voice%20Enterprise%20Custom%20Build">info@the-aideveloper.com</a>
+                  </div>
+                </div>
+                <div class="license-tier-price">
+                  <span class="new-price">Starting at $500</span>
+                  <span class="launch-badge">Custom made deployments</span>
+                </div>
+              </div>
+            </div>
+
+            <button id="licensePurchaseBtn" class="primary">
+              <span>Go to Purchase Page</span>
+              <span>→</span>
+            </button>
+          </div>
+
+          <div id="licenseManageTab" class="license-tab-content">
+            <div id="licenseDetailsSection" style="display: none;">
+              <div class="license-details-box">
+                <div class="license-detail-row">
+                  <span class="detail-label">License Type</span>
+                  <span class="detail-value" id="manageLicenseTier">—</span>
+                </div>
+                <div class="license-detail-row">
+                  <span class="detail-label">Email</span>
+                  <span class="detail-value" id="manageLicenseEmail">—</span>
+                </div>
+                <div class="license-detail-row">
+                  <span class="detail-label">License ID</span>
+                  <span class="detail-value" id="manageLicenseId">—</span>
+                </div>
+                <div class="license-detail-row">
+                  <span class="detail-label">Activated</span>
+                  <span class="detail-value" id="manageLicenseActivated">—</span>
+                </div>
+                <div class="license-detail-row">
+                  <span class="detail-label">Expires</span>
+                  <span class="detail-value" id="manageLicenseExpires">—</span>
+                </div>
+              </div>
+
+              <div class="license-refund-policy">
+                <strong>Refund Policy</strong>
+                <p>You may request a refund within 14 days of purchase. Refunds are processed automatically and will appear on your statement within 5-10 business days. Your license will be deactivated immediately upon successful refund.</p>
+              </div>
+
+              <button id="licenseRequestRefundBtn" class="danger" style="width: 100%; margin-bottom: 0.75rem;">Request Refund</button>
+              <button id="licenseDeactivateBtn" class="secondary" style="width: 100%;">Deactivate License</button>
+            </div>
+
+            <div id="licenseNoLicenseSection" style="display: none;">
+              <p class="license-empty-message">
+                No active license found. Please activate a license or start a trial.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Refund Confirmation Modal -->
+    <div id="refundConfirmModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Confirm Refund Request</h2>
+        </div>
+        <div class="modal-body">
+          <p>Are you sure you want to request a refund? This action will:</p>
+          <ul class="refund-list">
+            <li>Deactivate your license immediately</li>
+            <li>Process a full refund to your original payment method</li>
+            <li>Remove all license data from this device</li>
+          </ul>
+          <p>Refunds typically appear within 5-10 business days.</p>
+        </div>
+        <div class="modal-footer">
+          <button id="cancelRefundBtn" class="secondary">Cancel</button>
+          <button id="confirmRefundBtn" class="danger">Confirm Refund</button>
+        </div>
+      </div>
     </div>
 
     <script src="/app.js"></script>

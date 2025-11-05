@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Activate PrivateAI</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      /* Override main layout for license page */
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background: var(--bg-primary);
+        padding: 2rem;
+      }
+
+      .license-container {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        box-shadow: var(--shadow-lg);
+        max-width: 600px;
+        width: 100%;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .license-header {
+        text-align: center;
+        padding: 2rem 2rem 1.5rem;
+        border-bottom: 1px solid var(--border-light);
+        background: var(--bg-secondary);
+      }
+
+      .license-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 14px;
+        box-shadow: 0 12px 28px rgba(79, 70, 229, 0.18);
+        display: block;
+        margin: 0 auto 0.75rem;
+      }
+
+      .license-header h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+        letter-spacing: -0.01em;
+      }
+
+      .license-header p {
+        color: var(--text-secondary);
+        font-size: 0.9375rem;
+        margin: 0;
+      }
+
+      .license-body {
+        padding: 2rem;
+      }
+
+      .trial-info {
+        background: #fef3c7;
+        border: 1px solid #fbbf24;
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem;
+        text-align: center;
+      }
+
+      [data-theme="dark"] .trial-info {
+        background: rgba(253, 230, 138, 0.1);
+        border-color: rgba(251, 191, 36, 0.4);
+      }
+
+      .trial-info.expired {
+        background: #fee2e2;
+        border-color: #ef4444;
+      }
+
+      [data-theme="dark"] .trial-info.expired {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.4);
+      }
+
+      .trial-info strong {
+        display: block;
+        font-size: 1.125rem;
+        margin-bottom: 0.375rem;
+        color: #92400e;
+      }
+
+      [data-theme="dark"] .trial-info strong {
+        color: #fcd34d;
+      }
+
+      .trial-info.expired strong {
+        color: #991b1b;
+      }
+
+      [data-theme="dark"] .trial-info.expired strong {
+        color: #f87171;
+      }
+
+      .trial-info p {
+        margin: 0;
+        color: #92400e;
+        font-size: 0.875rem;
+      }
+
+      [data-theme="dark"] .trial-info p {
+        color: #fcd34d;
+      }
+
+      .trial-info.expired p {
+        color: #991b1b;
+      }
+
+      [data-theme="dark"] .trial-info.expired p {
+        color: #f87171;
+      }
+
+      .tab-buttons {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 2rem;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        padding: 0.25rem;
+      }
+
+      .tab-btn {
+        flex: 1;
+        padding: 0.625rem 1rem;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        border-radius: 6px;
+        transition: all 0.2s ease;
+      }
+
+      .tab-btn:hover {
+        color: var(--text-primary);
+        background: var(--bg-tertiary);
+      }
+
+      .tab-btn.active {
+        background: var(--accent);
+        color: white;
+      }
+
+      [data-theme="dark"] .tab-btn.active {
+        color: #1f1f1f;
+      }
+
+      .tab-content {
+        display: none;
+      }
+
+      .tab-content.active {
+        display: block;
+      }
+
+      label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+        font-size: 0.875rem;
+      }
+
+      textarea {
+        width: 100%;
+        padding: 0.875rem;
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+        font-size: 0.8125rem;
+        resize: vertical;
+        margin-bottom: 1rem;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        line-height: 1.5;
+        transition: all 0.2s ease;
+      }
+
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-bg);
+      }
+
+      textarea::placeholder {
+        color: var(--text-tertiary);
+      }
+
+      .hint {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        margin-top: -0.5rem;
+        margin-bottom: 1rem;
+        line-height: 1.5;
+      }
+
+      .btn {
+        width: 100%;
+        padding: 0.75rem 1.25rem;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: white;
+        box-shadow: var(--shadow-sm);
+      }
+
+      [data-theme="dark"] .btn-primary {
+        color: #1f1f1f;
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background: var(--accent-hover);
+        box-shadow: var(--shadow-md);
+        transform: translateY(-1px);
+      }
+
+      .btn-secondary {
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        border: 1px solid var(--border-light);
+        margin-top: 0.75rem;
+      }
+
+      .btn-secondary:hover {
+        background: var(--bg-tertiary);
+        border-color: var(--border-medium);
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .status-message {
+        padding: 1rem 1.25rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        display: none;
+        font-size: 0.875rem;
+        line-height: 1.5;
+      }
+
+      .status-message.success {
+        background: rgba(34, 197, 94, 0.1);
+        color: #059669;
+        border: 1px solid rgba(34, 197, 94, 0.3);
+      }
+
+      .status-message.error {
+        background: rgba(207, 34, 46, 0.1);
+        color: #cf222e;
+        border: 1px solid rgba(207, 34, 46, 0.3);
+      }
+
+      .features-box {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .features-box strong {
+        display: block;
+        margin-bottom: 0.75rem;
+        color: var(--text-primary);
+        font-size: 0.875rem;
+      }
+
+      .features-box ul {
+        margin: 0;
+        padding-left: 1.5rem;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+        line-height: 1.75;
+      }
+
+      .features-box li {
+        margin: 0.375rem 0;
+      }
+
+      .pricing-tiers {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .pricing-tier {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        transition: all 0.2s ease;
+      }
+
+      .pricing-tier:hover {
+        border-color: var(--accent);
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .tier-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .tier-name {
+        font-weight: 600;
+        color: var(--text-primary);
+        font-size: 0.9375rem;
+      }
+
+      .tier-devices {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+      }
+
+      .tier-devices a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      .tier-devices a:hover {
+        text-decoration: underline;
+      }
+
+      .tier-price {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.125rem;
+      }
+
+      .tier-price .old-price {
+        font-size: 0.875rem;
+        color: var(--text-tertiary);
+        text-decoration: line-through;
+      }
+
+      .tier-price .new-price {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--accent);
+      }
+
+      .tier-price .launch-badge {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #059669;
+      }
+
+      .footer-links {
+        text-align: center;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border-light);
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+      }
+
+      .footer-links a {
+        color: var(--accent);
+        text-decoration: none;
+        transition: opacity 0.2s ease;
+      }
+
+      .footer-links a:hover {
+        opacity: 0.8;
+        text-decoration: underline;
+      }
+
+      .footer-links .separator {
+        margin: 0 0.5rem;
+        color: var(--text-tertiary);
+      }
+
+      /* Close button in header */
+      .header-actions {
+        position: absolute;
+        top: 1.5rem;
+        right: 1.5rem;
+      }
+
+      .close-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-tertiary);
+        font-size: 1.5rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0.5rem;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+      }
+
+      .close-btn:hover {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+      }
+
+      /* Manage Tab Styles */
+      .license-details {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .license-detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--border-light);
+      }
+
+      .license-detail-row:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+
+      .license-detail-row:first-child {
+        padding-top: 0;
+      }
+
+      .detail-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        font-weight: 500;
+      }
+
+      .detail-value {
+        font-size: 0.875rem;
+        color: var(--text-primary);
+        font-weight: 500;
+        text-align: right;
+        word-break: break-all;
+      }
+
+      .refund-policy {
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        line-height: 1.6;
+      }
+
+      .refund-policy strong {
+        color: var(--text-primary);
+        display: block;
+        margin-bottom: 0.5rem;
+      }
+
+      .btn-danger {
+        background: #dc2626;
+        color: white;
+        box-shadow: var(--shadow-sm);
+      }
+
+      .btn-danger:hover:not(:disabled) {
+        background: #b91c1c;
+        box-shadow: var(--shadow-md);
+        transform: translateY(-1px);
+      }
+
+      /* Confirmation Modal */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-overlay.active {
+        display: flex;
+      }
+
+      .modal-content {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        box-shadow: var(--shadow-lg);
+        max-width: 450px;
+        width: 90%;
+        padding: 2rem;
+      }
+
+      .modal-header {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 1rem;
+      }
+
+      .modal-body {
+        color: var(--text-secondary);
+        font-size: 0.9375rem;
+        line-height: 1.6;
+        margin-bottom: 1.5rem;
+      }
+
+      .modal-actions {
+        display: flex;
+        gap: 0.75rem;
+      }
+
+      .modal-actions .btn {
+        flex: 1;
+        margin: 0;
+      }
+
+      /* Responsive */
+      @media (max-width: 640px) {
+        body {
+          padding: 1rem;
+        }
+
+        .license-body {
+          padding: 1.5rem;
+        }
+
+        .license-header {
+          padding: 1.5rem 1.5rem 1.25rem;
+        }
+
+        .tier-price {
+          font-size: 1.25rem;
+        }
+
+        .detail-value {
+          max-width: 60%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="license-container">
+      <div class="license-header">
+        <div class="header-actions">
+          <button id="closeBtn" class="close-btn" title="Close">×</button>
+        </div>
+        <img class="license-icon" src="/app-icon.png" alt="PrivateAI icon" />
+        <h1>Activate PrivateAI</h1>
+        <p id="headerSubtitle">Choose how you'd like to continue</p>
+      </div>
+
+      <div class="license-body">
+        <!-- Trial/License Status -->
+        <div id="trialInfo" class="trial-info" style="display: none;">
+          <strong id="trialStatus"></strong>
+          <p id="trialMessage"></p>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="statusMessage" class="status-message"></div>
+
+        <!-- Tabs -->
+        <div class="tab-buttons">
+          <button class="tab-btn active" data-tab="trial">Start Trial</button>
+          <button class="tab-btn" data-tab="activate">Activate License</button>
+          <button class="tab-btn" data-tab="purchase">Purchase</button>
+          <button class="tab-btn" data-tab="manage" id="manageTab">Manage</button>
+        </div>
+
+        <!-- Trial Tab -->
+        <div id="trialTab" class="tab-content active">
+          <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.9375rem;">
+            Try PrivateAI free for 7 days. No credit card required.
+          </p>
+
+          <div class="features-box">
+            <strong>What's included:</strong>
+            <ul>
+              <li>Full access to all features</li>
+              <li>100% local AI processing</li>
+              <li>Unlimited conversations</li>
+              <li>Document chat support</li>
+              <li>Workflow templates</li>
+            </ul>
+          </div>
+
+          <button id="startTrialBtn" class="btn btn-primary">Start 7-Day Free Trial</button>
+          <p class="hint" style="text-align: center; margin-top: 1rem;">
+            After 7 days, you'll need to purchase a license to continue using PrivateAI.
+          </p>
+        </div>
+
+        <!-- Activate License Tab -->
+        <div id="activateTab" class="tab-content">
+          <label for="licenseInput">Enter Your License Code</label>
+          <textarea
+            id="licenseInput"
+            rows="6"
+            placeholder="Paste your license code here...&#10;&#10;You received this via email after purchase."
+          ></textarea>
+          <p class="hint">License codes are long base64-encoded strings sent to your email after purchase.</p>
+
+          <button id="activateLicenseBtn" class="btn btn-primary">Activate License</button>
+        </div>
+
+        <!-- Purchase Tab -->
+        <div id="purchaseTab" class="tab-content">
+          <p style="margin-bottom: 1.5rem; color: var(--text-secondary); font-size: 0.9375rem;">
+            One-time payment. Lifetime license. No subscriptions.
+          </p>
+
+          <div class="pricing-tiers">
+            <div class="pricing-tier">
+              <div class="tier-info">
+                <div class="tier-name">Personal</div>
+                <div class="tier-devices">1 device · Lifetime updates</div>
+              </div>
+              <div class="tier-price">
+                <span class="old-price">$49</span>
+                <span class="new-price">$29.99</span>
+                <span class="launch-badge">Launch special</span>
+              </div>
+            </div>
+
+            <div class="pricing-tier">
+              <div class="tier-info">
+                <div class="tier-name">Pro</div>
+                <div class="tier-devices">3 devices · Lifetime updates</div>
+              </div>
+              <div class="tier-price">
+                <span class="old-price">$99</span>
+                <span class="new-price">$49.99</span>
+                <span class="launch-badge">Launch special</span>
+              </div>
+            </div>
+
+            <div class="pricing-tier">
+              <div class="tier-info">
+                <div class="tier-name">Enterprise Custom Build</div>
+                <div class="tier-devices">
+                  Specialized apps tailored to your business ·
+                  <a href="mailto:info@the-aideveloper.com?subject=PrivateAI%20Enterprise%20Custom%20Build">info@the-aideveloper.com</a>
+                </div>
+              </div>
+              <div class="tier-price">
+                <span class="new-price">Starting at $500</span>
+                <span class="launch-badge">Custom made deployments</span>
+              </div>
+            </div>
+          </div>
+
+          <button id="purchaseBtn" class="btn btn-primary">
+            <span>Go to Purchase Page</span>
+            <span>→</span>
+          </button>
+          <button id="purchaseBackBtn" class="btn btn-secondary">Cancel</button>
+        </div>
+
+        <!-- Manage License Tab -->
+        <div id="manageTabContent" class="tab-content">
+          <div id="licenseDetailsSection" style="display: none;">
+            <div class="license-details">
+              <div class="license-detail-row">
+                <span class="detail-label">License Type</span>
+                <span class="detail-value" id="licenseTier">—</span>
+              </div>
+              <div class="license-detail-row">
+                <span class="detail-label">Email</span>
+                <span class="detail-value" id="licenseEmail">—</span>
+              </div>
+              <div class="license-detail-row">
+                <span class="detail-label">License ID</span>
+                <span class="detail-value" id="licenseId">—</span>
+              </div>
+              <div class="license-detail-row">
+                <span class="detail-label">Activated</span>
+                <span class="detail-value" id="licenseActivated">—</span>
+              </div>
+              <div class="license-detail-row">
+                <span class="detail-label">Expires</span>
+                <span class="detail-value" id="licenseExpires">—</span>
+              </div>
+            </div>
+
+            <div class="refund-policy">
+              <strong>Refund Policy</strong>
+              <p>You may request a refund within 14 days of purchase. Refunds are processed automatically and will appear on your statement within 5-10 business days. Your license will be deactivated immediately upon successful refund.</p>
+            </div>
+
+            <button id="requestRefundBtn" class="btn btn-danger">Request Refund</button>
+            <button id="deactivateLicenseBtn" class="btn btn-secondary">Deactivate License</button>
+          </div>
+
+          <div id="noLicenseSection" style="display: none;">
+            <p style="text-align: center; color: var(--text-secondary); margin: 2rem 0;">
+              No active license found. Please activate a license or start a trial.
+            </p>
+          </div>
+        </div>
+
+        <div class="footer-links">
+          <a href="#" id="supportLink">Need help?</a>
+          <span class="separator">•</span>
+          <a href="#" id="privacyLink">Privacy Policy</a>
+          <span class="separator">•</span>
+          <a href="#" id="termsLink">Terms</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Refund Confirmation Modal -->
+    <div id="refundModal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">Confirm Refund Request</div>
+        <div class="modal-body">
+          <p>Are you sure you want to request a refund? This action will:</p>
+          <ul style="margin: 1rem 0; padding-left: 1.5rem; line-height: 1.8;">
+            <li>Deactivate your license immediately</li>
+            <li>Process a full refund to your original payment method</li>
+            <li>Remove all license data from this device</li>
+          </ul>
+          <p style="margin-top: 1rem;">Refunds typically appear within 5-10 business days.</p>
+        </div>
+        <div class="modal-actions">
+          <button id="cancelRefundBtn" class="btn btn-secondary">Cancel</button>
+          <button id="confirmRefundBtn" class="btn btn-danger">Confirm Refund</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/license.js"></script>
+  </body>
+</html>
