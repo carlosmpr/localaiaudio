@@ -11,6 +11,10 @@ src-tauri/gen/
 src-tauri/target/**/*
 src-tauri/gen/**/*
 target/
+binaries/macos/ffmpeg
+binaries/macos/ffmpeg-aarch64-apple-darwin
+binaries/windows/ffmpeg.exe
+binaries/windows/ffmpeg-x86_64-pc-windows-msvc.exe
 PrivateAI/
 python/__pycache__/
 python/.venv/

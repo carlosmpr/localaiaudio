@@ -1,7 +1,7 @@
 {
   "build": {
     "beforeDevCommand": "",
-    "beforeBuildCommand": "",
+    "beforeBuildCommand": "../scripts/prepare_binaries.sh",
     "devPath": "../public",
     "distDir": "../public",
     "withGlobalTauri": true

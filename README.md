@@ -57,7 +57,8 @@ privateai-voice/
 │       └── model_q4_1.gguf     # Whisper AI model (bundled)
 └── binaries/
     └── macos/
-        └── ffmpeg              # FFmpeg binary (bundled, static)
+        ├── ffmpeg.zip          # Static FFmpeg archive (tracked)
+        └── ffmpeg              # Extracted binary (created by prepare script)
 ```
 
 ## 🛠️ Development Setup
@@ -77,6 +78,16 @@ privateai-voice/
 cd Models/voice
 curl -L -o ggml-tiny.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
 ```
+
+### Prepare FFmpeg (after cloning)
+
+We ship the macOS FFmpeg build as a ZIP to keep the repo lightweight. Extract it via:
+
+```bash
+./scripts/prepare_binaries.sh
+```
+
+This script unpacks `binaries/macos/ffmpeg.zip`, marks the binary executable, and recreates the legacy symlink used by older configs. It runs automatically before every `tauri build`, but running it once right after cloning avoids surprises in dev mode.
 
 ### Run Development Server
 
