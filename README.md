@@ -54,10 +54,10 @@ privateai-voice/
 │   └── Cargo.toml              # Rust dependencies
 ├── Models/
 │   └── voice/
-│       └── ggml-tiny.bin       # Whisper AI model (bundled)
+│       └── model_q4_1.gguf     # Whisper AI model (bundled)
 └── binaries/
     └── macos/
-        └── ffmpeg-aarch64-apple-darwin  # FFmpeg binary (bundled)
+        └── ffmpeg              # FFmpeg binary (bundled, static)
 ```
 
 ## 🛠️ Development Setup
@@ -103,8 +103,8 @@ This creates platform-specific installers in `src-tauri/target/release/bundle/`:
 ### What Gets Bundled
 
 The production build automatically includes:
-- ✅ Whisper model (`Models/voice/ggml-tiny.bin`) - 77MB
-- ✅ FFmpeg binary (`binaries/macos/ffmpeg-aarch64-apple-darwin`) - 481KB
+- ✅ Whisper model (`Models/voice/model_q4_1.gguf`) - 77MB
+- ✅ FFmpeg binary (`binaries/macos/ffmpeg`) - 80MB (static build, no Homebrew deps)
 - ✅ All frontend assets (HTML/CSS/JS)
 
 **Total app size: ~78MB** - Everything users need, zero external dependencies!
@@ -114,12 +114,14 @@ The production build automatically includes:
 For Windows/Linux, add FFmpeg binaries to:
 ```
 binaries/
-├── macos/ffmpeg-aarch64-apple-darwin
+├── macos/ffmpeg
 ├── windows/ffmpeg-x86_64-pc-windows-msvc.exe
 └── linux/ffmpeg-x86_64-unknown-linux-gnu
 ```
 
 Update `tauri.conf.json` to bundle all platforms.
+
+> **Windows tip:** place a statically-built `ffmpeg.exe` in `binaries/windows/ffmpeg-x86_64-pc-windows-msvc.exe` (or rename to `ffmpeg.exe` and adjust the config). Before running `npm run tauri build` on Windows, set `tauri.bundle.externalBin` to point at that file so the installer ships with FFmpeg just like macOS does. The runtime path resolver already checks `binaries/windows/ffmpeg.exe`, so once the binary exists it is automatically picked up inside the packaged app.
 
 ## 🎯 Usage
 
@@ -164,12 +166,12 @@ Edit `public/styles.css` to change colors, fonts, or layout. The current theme i
 ## 🔧 Troubleshooting
 
 ### "Model not found" error
-- Ensure `Models/voice/ggml-tiny.bin` exists
+- Ensure `Models/voice/model_q4_1.gguf` exists
 - Check file size is ~77MB (not corrupted)
 
 ### "FFmpeg failed" error
-- Verify `binaries/macos/ffmpeg-aarch64-apple-darwin` exists and is executable
-- Try `chmod +x binaries/macos/ffmpeg-aarch64-apple-darwin`
+- Verify `binaries/macos/ffmpeg` exists and is executable
+- Try `chmod +x binaries/macos/ffmpeg`
 
 ### Transcription is inaccurate
 - Use 16kHz mono WAV for best results
@@ -202,8 +204,12 @@ xcrun notarytool submit "src-tauri/target/release/bundle/dmg/PrivateAI Voice_0.1
 
 ### Windows
 
-- Code-sign the `.msi` installer for Windows SmartScreen
-- Use a certificate from a trusted CA
+1. Download a static 64-bit `ffmpeg.exe` (e.g. from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/)) and place it at `binaries/windows/ffmpeg.exe` (or use the longer filename noted above).
+2. Update `tauri.conf.json`’s `tauri.bundle.externalBin` to point at that Windows binary before building on a Windows machine.
+3. Run `npm run tauri build --target x86_64-pc-windows-msvc` from a Windows terminal.
+4. Sign the generated `.msi`/`.exe` installers with your code-signing certificate to satisfy SmartScreen.
+
+The runtime lookup already prefers the packaged `ffmpeg.exe`, so once it is bundled no user installation is required.
 
 ### Linux
 

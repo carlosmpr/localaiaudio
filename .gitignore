@@ -10,6 +10,7 @@ src-tauri/target/
 src-tauri/gen/
 src-tauri/target/**/*
 src-tauri/gen/**/*
+target/
 PrivateAI/
 python/__pycache__/
 python/.venv/
@@ -32,3 +33,4 @@ LLVM-installer.exe
 # Claude Code
 .claude/
 .env
+.target

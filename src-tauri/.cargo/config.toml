@@ -1,2 +1,3 @@
 [build]
-target-dir = "/Volumes/Carlos/macos/target"
+# Keep Rust artifacts on the local workspace volume so macOS bundling tools work.
+target-dir = "../target"

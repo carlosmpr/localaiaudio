@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -10,19 +10,25 @@ pub struct TranscriptionResult {
 }
 
 /// Get the FFmpeg binary path (bundled or system)
+const FFMPEG_RELATIVE_PATHS: [&str; 4] = [
+    "binaries/macos/ffmpeg",
+    "binaries/macos/ffmpeg-aarch64-apple-darwin",
+    "binaries/windows/ffmpeg.exe",
+    "binaries/windows/ffmpeg-x86_64-pc-windows-msvc.exe",
+];
+
 fn get_ffmpeg_path() -> String {
+    // Try packaged app location first (Contents/MacOS/ffmpeg)
+    if let Some(packaged) = find_packaged_ffmpeg() {
+        println!("[INFO] Using packaged FFmpeg: {}", packaged.display());
+        return packaged.to_string_lossy().to_string();
+    }
+
     // Try to find bundled FFmpeg in common resource locations
     // Check current directory first (dev mode)
     let dev_ffmpeg = std::env::current_dir()
         .ok()
-        .and_then(|p| {
-            let ffmpeg = p.join("binaries/macos/ffmpeg-aarch64-apple-darwin");
-            if ffmpeg.exists() {
-                Some(ffmpeg)
-            } else {
-                None
-            }
-        });
+        .and_then(|p| find_dev_ffmpeg(&p));
 
     if let Some(path) = dev_ffmpeg {
         println!("[INFO] Using bundled FFmpeg (dev): {}", path.display());
@@ -32,14 +38,7 @@ fn get_ffmpeg_path() -> String {
     // Try parent directory (when running from src-tauri)
     let parent_ffmpeg = std::env::current_dir()
         .ok()
-        .and_then(|p| {
-            let ffmpeg = p.parent()?.join("binaries/macos/ffmpeg-aarch64-apple-darwin");
-            if ffmpeg.exists() {
-                Some(ffmpeg)
-            } else {
-                None
-            }
-        });
+        .and_then(|p| p.parent().and_then(find_dev_ffmpeg));
 
     if let Some(path) = parent_ffmpeg {
         println!("[INFO] Using bundled FFmpeg: {}", path.display());
@@ -49,6 +48,33 @@ fn get_ffmpeg_path() -> String {
     // Fall back to system FFmpeg
     println!("[INFO] Using system FFmpeg");
     "ffmpeg".to_string()
+}
+
+fn find_packaged_ffmpeg() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let exe_dir = exe.parent()?; // .../Contents/MacOS on macOS, install dir on Windows
+
+    let mac_ffmpeg = exe_dir.join("ffmpeg");
+    if mac_ffmpeg.exists() {
+        return Some(mac_ffmpeg);
+    }
+
+    let win_ffmpeg = exe_dir.join("ffmpeg.exe");
+    if win_ffmpeg.exists() {
+        return Some(win_ffmpeg);
+    }
+
+    None
+}
+
+fn find_dev_ffmpeg(base: &Path) -> Option<PathBuf> {
+    for rel in FFMPEG_RELATIVE_PATHS {
+        let candidate = base.join(rel);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 /// Convert audio file to WAV format (16kHz mono) using FFmpeg
@@ -76,7 +102,7 @@ fn convert_to_wav(input_path: &str) -> Result<String> {
     // -ar 16000: sample rate 16kHz
     // -ac 1: mono (1 channel)
     // -y: overwrite output file
-    let status = Command::new(&ffmpeg_path)
+    let output = Command::new(&ffmpeg_path)
         .args(&[
             "-i", input_path,
             "-ar", "16000",
@@ -84,11 +110,18 @@ fn convert_to_wav(input_path: &str) -> Result<String> {
             "-y",
             &output_path_str
         ])
-        .status()
+        .stderr(Stdio::piped())
+        .stdout(Stdio::null())
+        .output()
         .context("Failed to run FFmpeg. The bundled FFmpeg may be missing or corrupted.")?;
 
-    if !status.success() {
-        anyhow::bail!("FFmpeg conversion failed. Please check if the audio file is valid.");
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "FFmpeg conversion failed (status {}). FFmpeg error:\n{}",
+            output.status,
+            stderr
+        );
     }
 
     println!("[INFO] Audio conversion successful");
@@ -133,6 +166,12 @@ fn get_default_model_path() -> Result<String> {
     // Using turbo Q4 model for improved performance on local hardware
     // In production build: should be in the resources folder
 
+    // When running from the packaged .app, resources live relative to the executable.
+    if let Some(packaged_model) = find_packaged_model() {
+        println!("[INFO] Found packaged model at: {}", packaged_model.display());
+        return Ok(packaged_model.to_string_lossy().to_string());
+    }
+
     // First try: absolute path (for development on macOS) - using the quantized Whisper format
     let absolute_path = "/Volumes/Carlos/private/localaiAudio/Models/voice/model_q4_1.gguf";
     if std::path::Path::new(absolute_path).exists() {
@@ -169,7 +208,32 @@ fn get_default_model_path() -> Result<String> {
         }
     }
 
-    anyhow::bail!("Whisper model not found. Tried:\n  - {}\n  - Current dir + Models/voice/model_q4_1.gguf\n  - Parent dir + Models/voice/model_q4_1.gguf\n  - $HOME/private/localaiAudio/Models/voice/model_q4_1.gguf\n\nPlease ensure model_q4_1.gguf is in Models/voice/", absolute_path)
+    anyhow::bail!(
+        "Whisper model not found. Tried:\n  - Bundled Resources/(_up_/)?Models/voice/model_q4_1.gguf\n  - {}\n  - Current dir + Models/voice/model_q4_1.gguf\n  - Parent dir + Models/voice/model_q4_1.gguf\n  - $HOME/private/localaiAudio/Models/voice/model_q4_1.gguf\n\nPlease ensure model_q4_1.gguf is bundled or located in Models/voice/",
+        absolute_path
+    )
+}
+
+/// Locate the model inside the packaged .app bundle (Resources directory).
+fn find_packaged_model() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let resources_dir = exe
+        .parent()? // MacOS
+        .parent()? // Contents
+        .join("Resources");
+
+    // Tauri places bundled resources either directly or inside `_up_`.
+    let direct = resources_dir.join("Models/voice/model_q4_1.gguf");
+    if direct.exists() {
+        return Some(direct);
+    }
+
+    let up_path = resources_dir.join("_up_/Models/voice/model_q4_1.gguf");
+    if up_path.exists() {
+        return Some(up_path);
+    }
+
+    None
 }
 
 /// Transcribe audio using embedded Whisper model
